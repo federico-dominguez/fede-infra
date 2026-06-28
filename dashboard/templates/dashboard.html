@@ -3,8 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="30">
-  <title>Dashboard — Fede</title>
+  <meta name="theme-color" content="#0f1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icon-192.svg">
+  <title>Nexo — Fede</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -27,12 +31,13 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      min-height: 100dvh;
       padding: 24px;
+      overflow-x: hidden;
     }
 
-    .container { max-width: 1000px; margin: 0 auto; }
+    .container { max-width: 1000px; margin: 0 auto; width: 100%; }
 
-    /* Header */
     header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
@@ -41,19 +46,45 @@
       font-size: 24px; font-weight: 600;
       display: flex; align-items: center; gap: 10px;
     }
-    header h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); display: inline-block; }
+    header h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); display: inline-block; flex-shrink: 0; }
+    header h1 .dot.stale { background: var(--yellow); }
+    header h1 .dot.error { background: var(--red); }
     header .meta { color: var(--text-dim); font-size: 13px; text-align: right; }
     header .meta span { display: block; }
 
-    /* Cards grid */
-    .grid { display: grid; gap: 20px; }
+    .refresh-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); padding: 8px 18px; border-radius: 8px;
+      cursor: pointer; font-size: 13px; display: inline-flex;
+      align-items: center; gap: 6px; transition: all 0.2s;
+    }
+    .refresh-btn:hover { background: var(--border); border-color: var(--accent); }
+    .refresh-btn:active { transform: scale(0.95); }
+    .refresh-btn { -webkit-tap-highlight-color: transparent; }
+    .refresh-btn .spinner {
+      display: none; width: 14px; height: 14px;
+      border: 2px solid var(--text-dim); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    .refresh-btn.loading .spinner { display: inline-block; }
+    .refresh-btn.loading .label { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .last-update { font-size: 12px; color: var(--text-dim); }
+    .last-update .time { font-family: monospace; }
+
+    .grid { display: grid; gap: 16px; }
 
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 20px 24px;
+      padding: 20px;
+      transition: opacity 0.3s;
+      overflow: hidden;
     }
+    .card.loading { opacity: 0.5; }
+
     .card-title {
       font-size: 14px; font-weight: 500; color: var(--text-dim);
       text-transform: uppercase; letter-spacing: 0.5px;
@@ -61,13 +92,12 @@
     }
     .card-title .icon { font-size: 18px; }
 
-    /* Server info row */
     .server-info {
-      display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+      display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
     }
     .server-info .tag {
-      background: var(--surface2); padding: 6px 14px; border-radius: 8px;
-      font-size: 13px; display: flex; align-items: center; gap: 6px;
+      background: var(--surface2); padding: 6px 12px; border-radius: 8px;
+      font-size: 13px; display: flex; align-items: center; gap: 5px;
     }
     .server-info .tag .label { color: var(--text-dim); }
     .server-info .tag .value { color: var(--text); font-weight: 500; }
@@ -78,7 +108,6 @@
     .badge.off { background: var(--red); }
     .badge.warn { background: var(--yellow); }
 
-    /* Gauge bars */
     .gauge { margin-bottom: 14px; }
     .gauge:last-child { margin-bottom: 0; }
     .gauge-header {
@@ -98,8 +127,8 @@
     .gauge-fill.danger { background: var(--red); }
     .gauge-fill.ok { background: var(--green); }
 
-    /* Keys table */
-    .key-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 0 -4px; padding: 0 4px; }
+    .key-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 520px; }
     .key-table th {
       text-align: left; padding: 10px 8px 8px 8px;
       color: var(--text-dim); font-weight: 500; font-size: 12px;
@@ -110,227 +139,466 @@
       padding: 12px 8px; border-bottom: 1px solid var(--border);
     }
     .key-table tr:last-child td { border-bottom: none; }
-    .key-label {
-      display: flex; align-items: center; gap: 8px;
-    }
-    .key-label .avatar {
-      width: 28px; height: 28px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; background: var(--surface2);
-    }
-    .key-label .name { font-weight: 500; }
-    .key-label .sub { font-size: 11px; color: var(--text-dim); }
 
     .topup-on { color: var(--green); }
     .topup-off { color: var(--text-dim); }
 
-    /* Responsive */
-    @media (max-width: 700px) {
-      header { flex-direction: column; align-items: flex-start; }
-      header .meta { text-align: left; }
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 200% 100%; animation: shimmer 1.5s infinite;
+      border-radius: 6px; display: inline-block;
     }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .or-card-content {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    .or-stat {
+      background: var(--surface2); padding: 10px 14px; border-radius: 8px;
+    }
+    .or-stat .or-stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.3px; }
+    .or-stat .or-stat-value { font-size: 17px; font-weight: 700; margin-top: 2px; }
+
+    /* Mobile responsive */
+    @media (max-width: 640px) {
+      body { padding: 14px; }
+      header { margin-bottom: 14px; flex-direction: column; align-items: flex-start; }
+      header .meta { text-align: left; }
+      header h1 { font-size: 20px; }
+      .grid { gap: 12px; }
+      .card { padding: 14px; border-radius: 10px; }
+      .server-info { gap: 8px; }
+      .server-info .tag { font-size: 11px; padding: 4px 8px; }
+      .or-card-content { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .or-stat { padding: 8px 10px; }
+      .or-stat .or-stat-value { font-size: 15px; }
+      .last-update { font-size: 10px; }
+      .refresh-btn { padding: 6px 12px; font-size: 11px; }
+      .key-table { font-size: 12px; min-width: 480px; }
+    }
+
+    @media (max-width: 400px) {
+      body { padding: 10px; }
+      .card { padding: 12px; }
+      .or-card-content { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* PWA fullscreen */
+    @media (display-mode: standalone), (display-mode: fullscreen) {
+      body { padding-top: max(24px, env(safe-area-inset-top, 0px)); }
+    }
+    @media (display-mode: standalone) and (max-width: 640px), (display-mode: fullscreen) and (max-width: 640px) {
+      body { padding-top: max(14px, env(safe-area-inset-top, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); }
+    }
+
+    /* Value transitions for smooth updates */
+    .val { transition: color 0.3s; }
+    .val.updating { color: var(--accent); }
+
+    .server-tab {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .server-tab button {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-dim); padding: 6px 14px; border-radius: 8px;
+      cursor: pointer; font-size: 13px; transition: all 0.2s;
+    }
+    .server-tab button.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+    .server-tab button:hover:not(.active) { border-color: var(--accent); color: var(--text); }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>
-        <span class="dot"></span>
-        Dashboard
+        <span class="dot" id="status-dot"></span>
+        Nexo
       </h1>
       <div class="meta">
-        <span>{{ now }}</span>
-        <span>Actualiza cada 30s · Tailscale</span>
+        <div class="last-update">
+          <span style="color:var(--text-dim);">Última actualización: </span>
+          <span class="time" id="live-now">{{ now }}</span>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+          <span id="live-status" style="font-size:12px;color:var(--green);">● En vivo</span>
+          <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()">
+            <span class="spinner"></span>
+            <span class="label">⟳ Refrescar</span>
+          </button>
+        </div>
       </div>
     </header>
 
-    <div class="grid">
-
-      <!-- ── OPENROUTER ACCOUNT CARD (arriba) ── -->
-      <div class="card">
+    <div class="grid" id="grid-root">
+      <div class="card" id="or-card">
         <div class="card-title"><span class="icon">🤖</span> OpenRouter — Cuenta</div>
-        <div class="server-info" style="margin-bottom:0;">
-          <div class="tag">
-            <span class="label">Total créditos</span>
-            <span class="value">${{ "%.2f"|format(openrouter.account.total_credits) }}</span>
-          </div>
-          <div class="tag">
-            <span class="label">Gastado</span>
-            <span class="value">${{ "%.2f"|format(openrouter.account.total_usage) }}</span>
-          </div>
-          <div class="tag">
-            <span class="label">Restante</span>
-            <span class="value" style="color:{% if openrouter.account.credits_left < 1 %}var(--red){% elif openrouter.account.credits_left < 5 %}var(--yellow){% else %}var(--green){% endif %};">
-              ${{ "%.2f"|format(openrouter.account.credits_left) }}
-            </span>
-          </div>
-          <div class="tag">
-            <span class="label">Auto top-up</span>
-            {% if openrouter.auto_topup %}
-            <span class="badge on"></span><span class="value topup-on">Encendido</span>
-            {% else %}
-            <span class="badge off"></span><span class="value topup-off">Apagado</span>
-            {% endif %}
-          </div>
+        <div class="or-card-content">
+          <div class="or-stat"><div class="or-stat-label">Total créditos</div><div class="or-stat-value" id="or-total">—</div></div>
+          <div class="or-stat"><div class="or-stat-label">Gastado</div><div class="or-stat-value" id="or-usage">—</div></div>
+          <div class="or-stat"><div class="or-stat-label">Restante</div><div class="or-stat-value" id="or-left">—</div></div>
+          <div class="or-stat"><div class="or-stat-label">Auto top-up</div><div class="or-stat-value" id="or-topup">—</div></div>
         </div>
       </div>
-
-      <!-- ── SERVER CARDS ── -->
-      {% for sv in servers %}
-      <div class="card">
-        <div class="card-title"><span class="icon">🖥️</span> {{ sv.name }}</div>
-
-        <div class="server-info">
-          <div class="tag"><span class="label">Hostname</span><span class="value">{{ sv.name }}</span></div>
-          <div class="tag"><span class="label">Tailscale</span><span class="value">{{ sv.ip }}</span></div>
-          {% if sv.has_metrics %}
-          {% for ip in sv.metrics.ips %}
-          <div class="tag"><span class="label">{{ ip.interface }}</span><span class="value">{{ ip.ip }}</span></div>
-          {% endfor %}
-          <div class="tag"><span class="label">Uptime</span><span class="value">{{ sv.metrics.uptime }}</span></div>
-          <div class="tag">
-            <span class="label">Backup</span>
-            {% if sv.metrics.backup.status == "ok" %}
-            <span class="badge on"></span><span class="value">{{ sv.metrics.backup.label }} ({{ sv.metrics.backup.last_run }})</span>
-            {% elif sv.metrics.backup.status == "pending" %}
-            <span class="badge warn"></span><span class="value">{{ sv.metrics.backup.label }}</span>
-            {% elif sv.metrics.backup.status == "warning" %}
-            <span class="badge off" style="background:var(--red)"></span><span class="value" style="color:var(--red)">⚠️ {{ sv.metrics.backup.label }}</span>
-            {% else %}
-            <span class="badge off"></span><span class="value">{{ sv.metrics.backup.label }}</span>
-            {% endif %}
-          </div>
-          {% endif %}
-        </div>
-
-        {% if sv.has_metrics %}
-        <!-- Métricas solo para main -->
-        <div class="gauge">
-          <div class="gauge-header">
-            <span class="name">CPU</span>
-            <span class="pct">{{ sv.metrics.cpu_percent }}%</span>
-          </div>
-          <div class="gauge-track">
-            <div class="gauge-fill {% if sv.metrics.cpu_percent > 80 %}danger{% elif sv.metrics.cpu_percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ sv.metrics.cpu_percent }}%"></div>
-          </div>
-        </div>
-        <div class="gauge">
-          <div class="gauge-header">
-            <span class="name">RAM</span>
-            <span class="pct">{{ sv.metrics.ram.used }} / {{ sv.metrics.ram.total }} GB — {{ sv.metrics.ram.percent }}%</span>
-          </div>
-          <div class="gauge-track">
-            <div class="gauge-fill {% if sv.metrics.ram.percent > 80 %}danger{% elif sv.metrics.ram.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ sv.metrics.ram.percent }}%"></div>
-          </div>
-        </div>
-        <div class="gauge">
-          <div class="gauge-header">
-            <span class="name">Disco (/)</span>
-            <span class="pct">{{ sv.metrics.disk.used }} / {{ sv.metrics.disk.total }} GB — {{ sv.metrics.disk.percent }}%</span>
-          </div>
-          <div class="gauge-track">
-            <div class="gauge-fill {% if sv.metrics.disk.percent > 80 %}danger{% elif sv.metrics.disk.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ sv.metrics.disk.percent }}%"></div>
-          </div>
-        </div>
-        {% endif %}
-
-        {% if sv.get("keys") %}
-        <div style="margin-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};padding-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};border-top:{% if sv.has_metrics %}1px solid var(--border){% else %}none{% endif %};">
-          <div class="card-title" style="margin-bottom:10px;"><span class="icon">🤖</span> Agentes</div>
-          {% set all_keys = sv.get("keys", []) %}
-          {% set native_keys = all_keys | selectattr("tier", "equalto", "native") | list %}
-          {% set docker_keys = all_keys | selectattr("tier", "equalto", "docker") | list %}
-          {% set remote_keys = all_keys | selectattr("tier", "equalto", "remote") | list %}
-          
-          {% if native_keys %}
-          <table class="key-table">
-            <thead><tr><th></th><th>Nombre</th><th>Bot ID</th><th>Provider</th><th>Model</th><th>API Key</th><th>Consumo</th></tr></thead>
-            <tbody>
-            {% for key in native_keys %}
-            <tr>
-              <td><span style="font-size:20px;">{{ key.avatar }}</span></td>
-              <td><span style="font-weight:500;">{{ key.display_name }}</span></td>
-              <td><code style="font-size:12px;color:var(--text-dim);">{{ key.bot_id }}</code></td>
-              <td><code style="font-size:12px;color:var(--accent);">{{ key.provider }}</code></td>
-              <td><code style="font-size:12px;color:var(--accent);">{{ key.model }}</code></td>
-              <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
-              <td>
-                {% if key.error %}
-                <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>
-                {% else %}
-                ${{ "%.2f"|format(key.usage) }}
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-            </tbody>
-          </table>
-          {% endif %}
-
-          {% if docker_keys %}
-          <details style="margin-top:12px;">
-            <summary style="cursor:pointer;font-size:13px;color:var(--accent);padding:8px 0;user-select:none;">
-              🐳 Docker ({{ docker_keys | length }})
-            </summary>
-            <table class="key-table" style="margin-top:8px;">
-              <thead><tr><th></th><th>Nombre</th><th>Bot ID</th><th>Provider</th><th>Model</th><th>API Key</th><th>Consumo</th></tr></thead>
-              <tbody>
-              {% for key in docker_keys %}
-              <tr>
-                <td><span style="font-size:20px;">{{ key.avatar }}</span></td>
-                <td><span style="font-weight:500;">{{ key.display_name }}</span></td>
-                <td><code style="font-size:12px;color:var(--text-dim);">{{ key.bot_id }}</code></td>
-                <td><code style="font-size:12px;color:var(--accent);">{{ key.provider }}</code></td>
-                <td><code style="font-size:12px;color:var(--accent);">{{ key.model }}</code></td>
-                <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
-                <td>
-                  {% if key.error %}
-                  <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>
-                  {% else %}
-                  ${{ "%.2f"|format(key.usage) }}
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </details>
-          {% endif %}
-
-          {% if remote_keys %}
-          <table class="key-table" style="{% if native_keys %}margin-top:12px;{% endif %}">
-            <thead><tr><th></th><th>Nombre</th><th>Bot ID</th><th>Provider</th><th>Model</th><th>API Key</th><th>Consumo</th></tr></thead>
-            <tbody>
-            {% for key in remote_keys %}
-            <tr>
-              <td><span style="font-size:20px;">{{ key.avatar }}</span></td>
-              <td><span style="font-weight:500;">{{ key.display_name }}</span></td>
-              <td><code style="font-size:12px;color:var(--text-dim);">{{ key.bot_id }}</code></td>
-              <td><code style="font-size:12px;color:var(--accent);">{{ key.provider }}</code></td>
-              <td><code style="font-size:12px;color:var(--accent);">{{ key.model }}</code></td>
-              <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
-              <td>
-                {% if key.error %}
-                <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>
-                {% else %}
-                ${{ "%.2f"|format(key.usage) }}
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-            </tbody>
-          </table>
-          {% endif %}
-        </div>
-        {% endif %}
-      </div>
-      {% endfor %}
-
     </div>
 
     <footer style="margin-top:20px;text-align:center;color:var(--text-dim);font-size:12px;">
-      Dashboard v1 · FastAPI + psutil · Hecho con ❤️ por Lena 🐱‍👤
+      Nexo · SPA live · Hecho con ❤️ por Lena 🐱‍👤
     </footer>
   </div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    const POLL_INTERVAL = 8000; // ms
+    let isUpdating = false;
+    let timer = null;
+    let manualPending = false;
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+
+    function qs(sel, parent) { return (parent || document).querySelector(sel); }
+    function qsa(sel, parent) { return (parent || document).querySelectorAll(sel); }
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    function fmtDollar(n) {
+      return '$' + (n || 0).toFixed(2);
+    }
+
+    function fmtUptime(metrics) {
+      if (!metrics || !metrics.uptime) return '—';
+      return metrics.uptime;
+    }
+
+    function gaugeClass(pct) {
+      return pct > 80 ? 'danger' : pct > 60 ? 'warn' : 'ok';
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── OpenRouter Account ───────────────────────────────────────────────
+
+    function updateOR(data) {
+      const acct = (data && data.account) || {};
+      const total = acct.total_credits || 0;
+      const used = acct.total_usage || 0;
+      const left = acct.credits_left || 0;
+
+      setText('or-total', fmtDollar(total));
+      setText('or-usage', fmtDollar(used));
+
+      const leftEl = document.getElementById('or-left');
+      if (leftEl) {
+        leftEl.textContent = fmtDollar(left);
+        leftEl.style.color = left < 1 ? 'var(--red)' : left < 5 ? 'var(--yellow)' : 'var(--green)';
+      }
+
+      const topup = !!data.auto_topup;
+      const topupEl = document.getElementById('or-topup');
+      if (topupEl) {
+        topupEl.textContent = topup ? '✅ Encendido' : '❌ Apagado';
+        topupEl.style.color = topup ? 'var(--green)' : 'var(--text-dim)';
+      }
+
+      // Update key usages
+      if (data && data.key_list) {
+        for (const k of data.key_list) {
+          const cell = document.querySelector('.key-usage[data-key="' + k.label + '"]');
+          if (!cell) continue;
+          if (k.error) {
+            cell.innerHTML = '<span style="color:var(--yellow);font-size:12px;">' + k.error.slice(0, 40) + '</span>';
+          } else {
+            cell.textContent = fmtDollar(k.usage || 0);
+          }
+          const row = cell.closest('tr');
+          if (row && k.key_suffix) {
+            const suffixTd = row.querySelector('td:nth-child(6)');
+            if (suffixTd) suffixTd.textContent = '**...' + k.key_suffix;
+          }
+        }
+      }
+    }
+
+    // ── Server Cards ─────────────────────────────────────────────────────
+
+    function buildServerHTML(sv) {
+      const m = sv.metrics;
+      const hasMetrics = sv.has_metrics && m;
+      const uptime = hasMetrics ? fmtUptime(m) : '—';
+
+      // Backup
+      let backupHTML = '<span class="badge off"></span><span class="value">—</span>';
+      if (hasMetrics && m.backup) {
+        if (m.backup.status === 'ok') {
+          backupHTML = '<span class="badge on"></span><span class="value">' + escHtml(m.backup.label) + ' (' + escHtml(m.backup.last_run || '') + ')</span>';
+        } else if (m.backup.status === 'pending') {
+          backupHTML = '<span class="badge warn"></span><span class="value">' + escHtml(m.backup.label) + '</span>';
+        } else if (m.backup.status === 'warning') {
+          backupHTML = '<span class="badge off" style="background:var(--red)"></span><span class="value" style="color:var(--red)">⚠️ ' + escHtml(m.backup.label) + '</span>';
+        } else {
+          backupHTML = '<span class="badge off"></span><span class="value">N/A</span>';
+        }
+      }
+
+      // Gauges
+      let gaugesHTML = '';
+      if (hasMetrics) {
+        const cpuPct = m.cpu_percent || 0;
+        const ramPct = m.ram ? m.ram.percent || 0 : 0;
+        const ramUsed = m.ram ? m.ram.used || 0 : 0;
+        const ramTotal = m.ram ? m.ram.total || 0 : 0;
+        const diskPct = m.disk ? m.disk.percent || 0 : 0;
+        const diskUsed = m.disk ? m.disk.used || 0 : 0;
+        const diskTotal = m.disk ? m.disk.total || 0 : 0;
+
+        gaugesHTML = `
+          <div class="gauge">
+            <div class="gauge-header"><span class="name">CPU</span><span class="pct">${cpuPct}%</span></div>
+            <div class="gauge-track"><div class="gauge-fill ${gaugeClass(cpuPct)}" style="width:${cpuPct}%"></div></div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-header"><span class="name">RAM</span><span class="pct">${ramUsed} / ${ramTotal} GB — ${ramPct}%</span></div>
+            <div class="gauge-track"><div class="gauge-fill ${gaugeClass(ramPct)}" style="width:${ramPct}%"></div></div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-header"><span class="name">Disco (/)</span><span class="pct">${diskUsed} / ${diskTotal} GB — ${diskPct}%</span></div>
+            <div class="gauge-track"><div class="gauge-fill ${gaugeClass(diskPct)}" style="width:${diskPct}%"></div></div>
+          </div>`;
+      }
+
+      // Keys table
+      const keys = sv.keys || [];
+      const nativeKeys = keys.filter(k => k.tier === 'native');
+      const dockerKeys = keys.filter(k => k.tier === 'docker');
+      const remoteKeys = keys.filter(k => k.tier === 'remote');
+
+      let keysHTML = '';
+      for (const [tier, tierKeys] of [['native', nativeKeys], ['docker', dockerKeys], ['remote', remoteKeys]]) {
+        if (!tierKeys.length) continue;
+
+        let bodyHTML = '';
+        for (const key of tierKeys) {
+          const usageHTML = key.error
+            ? '<span style="color:var(--yellow);font-size:12px;">' + escHtml(key.error.slice(0, 40)) + '</span>'
+            : fmtDollar(key.usage || 0);
+          bodyHTML += `
+            <tr data-key="${escHtml(key.label)}">
+              <td><span style="font-size:20px;">${escHtml(key.avatar)}</span></td>
+              <td><span style="font-weight:500;">${escHtml(key.display_name)}</span></td>
+              <td><a href="https://t.me/${escHtml(key.bot_id).replace('@','')}" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent);text-decoration:none;">${escHtml(key.bot_id)} ↗</a></td>
+              <td><code style="font-size:12px;color:var(--accent);">${escHtml(key.provider)}</code></td>
+              <td><code style="font-size:12px;color:var(--accent);">${escHtml(key.model)}</code></td>
+              <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...${escHtml(key.key_suffix)}</td>
+              <td class="key-usage" data-key="${escHtml(key.label)}">${usageHTML}</td>
+            </tr>`;
+        }
+
+        const tierStyle = tier === 'docker' ? 'margin-top:12px;' : '';
+
+        // Docker wrap in <details> with id para preservar estado
+        if (tier === 'docker') {
+          keysHTML += `
+            <details id="details-docker-${escHtml(sv.id)}" style="margin-top:12px;">
+              <summary style="cursor:pointer;font-size:13px;color:var(--accent);padding:8px 0;user-select:none;">🐳 Docker (${dockerKeys.length})</summary>
+              <div class="table-wrap"><table class="key-table" data-tier="docker">
+                <thead><tr><th></th><th>Nombre</th><th>Bot ID</th><th>Provider</th><th>Model</th><th>API Key</th><th>Consumo</th></tr></thead>
+                <tbody>${bodyHTML}</tbody>
+              </table></div>
+            </details>`;
+        } else {
+          keysHTML += `
+            <div style="${tierStyle}">
+              <div class="table-wrap"><table class="key-table" data-tier="${tier}">
+                <thead><tr><th></th><th>Nombre</th><th>Bot ID</th><th>Provider</th><th>Model</th><th>API Key</th><th>Consumo</th></tr></thead>
+                <tbody>${bodyHTML}</tbody>
+              </table></div>
+            </div>`;
+        }
+      }
+
+      if (keys.length && gaugesHTML) {
+        keysHTML = `<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);"><div class="card-title" style="margin-bottom:10px;"><span class="icon">🤖</span> Agentes</div>${keysHTML}</div>`;
+      } else if (keys.length) {
+        keysHTML = `<div style="margin-top:0;padding-top:0;border-top:none;"><div class="card-title" style="margin-bottom:10px;"><span class="icon">🤖</span> Agentes</div>${keysHTML}</div>`;
+      }
+
+      return `
+        <div class="card" data-server="${escHtml(sv.id)}">
+          <div class="card-title"><span class="icon">🖥️</span> <span class="sv-name">${escHtml(sv.name)}</span></div>
+          <div class="server-info">
+            <div class="tag"><span class="label">Hostname</span><span class="value sv-name">${escHtml(sv.name)}</span></div>
+            <div class="tag"><span class="label">Tailscale</span><span class="value">${escHtml(sv.ip || '')}</span></div>
+            <div class="tag"><span class="label">Uptime</span><span class="value">${uptime}</span></div>
+            <div class="tag"><span class="label">Backup</span>${backupHTML}</div>
+          </div>
+          ${gaugesHTML}
+          ${keysHTML}
+        </div>`;
+    }
+
+    function renderServers(data) {
+      const grid = document.getElementById('grid-root');
+      if (!grid) return;
+
+      // Guardar estado de los <details> (Docker dropdowns)
+      const detailsState = {};
+      const detailsEls = grid.querySelectorAll('details[id^="details-docker-"]');
+      for (const el of detailsEls) {
+        detailsState[el.id] = el.open;
+      }
+
+      // Sacar server cards viejos (todo excepto #or-card)
+      const orCard = document.getElementById('or-card');
+      grid.innerHTML = '';
+      if (orCard) grid.appendChild(orCard);
+
+      const servers = data && data.servers ? data.servers : [];
+      for (const sv of servers) {
+        grid.insertAdjacentHTML('beforeend', buildServerHTML(sv));
+      }
+
+      // Restaurar estado de los <details>
+      for (const [id, wasOpen] of Object.entries(detailsState)) {
+        const el = document.getElementById(id);
+        if (el && wasOpen) {
+          el.open = true;
+        }
+      }
+    }
+
+    // ── Fetching ─────────────────────────────────────────────────────────
+
+    async function fetchJSON(url) {
+      try {
+        const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch (e) {
+        console.warn('fetch failed:', url, e);
+        return null;
+      }
+    }
+
+    async function doUpdate() {
+      if (isUpdating) return;
+      isUpdating = true;
+
+      try {
+        // Refresh button spinner
+        const btn = document.getElementById('refresh-btn');
+
+        // Fetch both in parallel
+        const [serversData, orData] = await Promise.all([
+          fetchJSON('/api/servers'),
+          fetchJSON('/api/openrouter'),
+        ]);
+
+        if (serversData) {
+          renderServers(serversData);
+        }
+        if (orData) {
+          updateOR(orData);
+        }
+
+        // Update timestamp
+        const now = new Date();
+        const utcStr = now.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '') + ' UTC';
+        setText('live-now', utcStr);
+
+        // Status dot
+        const dot = document.getElementById('status-dot');
+        if (dot) {
+          dot.className = 'dot';
+          if (!serversData && !orData) dot.classList.add('error');
+        }
+
+        // Live status
+        const statusEl = document.getElementById('live-status');
+        if (statusEl) {
+          if (!serversData && !orData) {
+            statusEl.textContent = '⚠ Sin datos';
+            statusEl.style.color = 'var(--yellow)';
+          } else {
+            statusEl.textContent = '● En vivo';
+            statusEl.style.color = 'var(--green)';
+          }
+        }
+
+      } finally {
+        isUpdating = false;
+        const btn = document.getElementById('refresh-btn');
+        if (btn) btn.classList.remove('loading');
+        manualPending = false;
+      }
+    }
+
+    // ── Manual refresh ───────────────────────────────────────────────────
+
+    window.manualRefresh = function() {
+      if (manualPending || isUpdating) return;
+      manualPending = true;
+      const btn = document.getElementById('refresh-btn');
+      if (btn) btn.classList.add('loading');
+
+      // First hit /api/refresh to clear cache
+      fetch('/api/refresh', { method: 'POST', signal: AbortSignal.timeout(5000) })
+        .catch(() => {})
+        .finally(() => doUpdate());
+    };
+
+    // ── Init & Poll ──────────────────────────────────────────────────────
+
+    // Initial load
+    doUpdate();
+
+    // Poll every 8s
+    timer = setInterval(doUpdate, POLL_INTERVAL);
+
+  })();
+
+  // ── PWA: register service worker + install prompt ──────────────────
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    // Show a small install banner
+    const banner = document.createElement('div');
+    banner.id = 'install-banner';
+    banner.innerHTML = `📲 <span>Instalar Dashboard</span> <button id="install-btn">Instalar</button> <button id="dismiss-btn">✕</button>`;
+    Object.assign(banner.style, {
+      position: 'fixed', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
+      background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: '12px',
+      padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '12px',
+      zIndex: '999', fontSize: '14px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+    });
+    const installBtn = banner.querySelector('#install-btn');
+    Object.assign(installBtn.style, {
+      background: 'var(--accent)', color: '#0f1117', border: 'none',
+      padding: '6px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600',
+    });
+    const dismissBtn = banner.querySelector('#dismiss-btn');
+    Object.assign(dismissBtn.style, {
+      background: 'transparent', color: 'var(--text-dim)', border: 'none',
+      cursor: 'pointer', fontSize: '16px', padding: '4px',
+    });
+    installBtn.onclick = () => { deferredPrompt.prompt(); banner.remove(); };
+    dismissBtn.onclick = () => banner.remove();
+    document.body.appendChild(banner);
+  });
+  window.addEventListener('appinstalled', () => {
+    const banner = document.getElementById('install-banner');
+    if (banner) banner.remove();
+  });
+  </script>
 </body>
 </html>

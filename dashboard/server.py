@@ -8,13 +8,15 @@ Corre en Tailscale (100.109.36.3) para acceso privado.
 import os
 import sys
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
+import asyncio
 import httpx
 import psutil
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from jinja2 import Environment, FileSystemLoader
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -55,7 +57,7 @@ KEY_DISPLAY = {
     "main-1-key": {"name": "Lena", "avatar": "🐱", "server_id": "main", "bot_id": "@s_lena_bot", "tier": "native"},
     "main-moltbot": {"name": "Claw", "avatar": "🦞", "server_id": "main", "bot_id": "@s_clawopen_bot", "tier": "docker"},
     "main-lina": {"name": "Lina", "avatar": "🩷", "server_id": "main", "bot_id": "@s_lina_bot", "tier": "docker"},
-    "main-gemma": {"name": "Gemma", "avatar": "💎", "server_id": "main", "bot_id": "—", "tier": "docker"},
+    "main-gemma": {"name": "Gemma", "avatar": "💎", "server_id": "main", "bot_id": "@s_gemma_bot", "tier": "docker"},
     "monitor-1": {"name": "Mia", "avatar": "🐈‍⬛", "server_id": "monitor-1", "bot_id": "@s_mia_bot", "tier": "remote"},
     "monitor-2": {"name": "Cline", "avatar": "🐶", "server_id": "monitor-2", "bot_id": "@s_cline_bot", "tier": "remote"},
 }
@@ -97,67 +99,63 @@ templates = Environment(loader=FileSystemLoader(Path(__file__).parent / "templat
 # ── OpenRouter helpers ──────────────────────────────────────────────────────
 
 
-async def fetch_account_credits() -> dict:
-    """Obtiene créditos de la cuenta (account-wide, compartido entre keys)."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            resp = await client.get(
-                "https://openrouter.ai/api/v1/credits",
-                headers={"Authorization": f"Bearer {OPENROUTER_ACCOUNT}"},
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", {})
-            total = data.get("total_credits", 0)
-            used = data.get("total_usage", 0)
-            return {
-                "total_credits": total,
-                "total_usage": used,
-                "credits_left": max(0, total - used),
-            }
-        except Exception as e:
-            return {"error": str(e), "total_credits": 0, "total_usage": 0, "credits_left": 0}
-
-
-async def fetch_openrouter_key_info(api_key: str, label: str) -> dict:
-    """Obtiene info de la key (uso individual)."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            resp = await client.get(
-                "https://openrouter.ai/api/v1/auth/key",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", {})
-            return {
-                "label": label,
-                "usage": data.get("usage", 0),
-                "limit": data.get("limit", 0),
-                "is_free_tier": data.get("is_free_tier", False),
-            }
-        except Exception as e:
-            return {"error": str(e), "label": label, "usage": 0, "limit": 0}
+async def _or_request(client: httpx.AsyncClient, method: str, path: str, api_key: str):
+    """Helper para hacer requests a OpenRouter con timeout y manejo de errores."""
+    try:
+        resp = await client.get(
+            f"https://openrouter.ai/api/v1/{path}",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        resp.raise_for_status()
+        return resp.json().get("data", {})
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def collect_openrouter_data() -> dict:
-    """Recolecta datos de cuenta y keys de OpenRouter."""
-    account = await fetch_account_credits()
+    """Recolecta datos de cuenta y keys de OpenRouter en paralelo."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        # Fetch account credits + all key infos en PARALELO
+        tasks = {
+            "account": _or_request(client, "GET", "credits", OPENROUTER_ACCOUNT),
+        }
+        for label, api_key in OPENROUTER_KEYS.items():
+            tasks[f"key_{label}"] = _or_request(client, "GET", "auth/key", api_key)
+
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    # Parse account
+    acct_data = results[0] if not isinstance(results[0], Exception) else {}
+    if isinstance(acct_data, dict) and "error" in acct_data:
+        acct_data = {}
+    account = {
+        "total_credits": acct_data.get("total_credits", 0),
+        "total_usage": acct_data.get("total_usage", 0),
+        "credits_left": max(0, acct_data.get("total_credits", 0) - acct_data.get("total_usage", 0)),
+    }
+
+    # Parse keys (skip index 0 which is account)
     keys = []
-    for label, api_key in OPENROUTER_KEYS.items():
-        info = await fetch_openrouter_key_info(api_key, label)
+    labels = list(OPENROUTER_KEYS.keys())
+    for i, label in enumerate(labels):
+        raw = results[1 + i] if (1 + i) < len(results) else {}
+        if isinstance(raw, Exception):
+            raw = {"error": str(raw)}
+        info = raw if isinstance(raw, dict) else {}
+        api_key = OPENROUTER_KEYS[label]
         key_suffix = api_key[-4:] if len(api_key) >= 4 else api_key
         display = KEY_DISPLAY.get(label, {"name": label, "avatar": "?", "server_id": "?"})
-        keys.append(
-            {
-                "label": label,
-                "display_name": display["name"],
-                "avatar": display["avatar"],
-                "server": display["server_id"],
-                "key_suffix": key_suffix,
-                "usage": info.get("usage", 0),
-                "is_free_tier": info.get("is_free_tier", False),
-                "error": info.get("error"),
-            }
-        )
+        keys.append({
+            "label": label,
+            "display_name": display["name"],
+            "avatar": display["avatar"],
+            "server": display["server_id"],
+            "key_suffix": key_suffix,
+            "usage": info.get("usage", 0),
+            "is_free_tier": info.get("is_free_tier", False),
+            "error": info.get("error"),
+        })
+
     return {"account": account, "key_list": keys, "auto_topup": AUTO_TOPUP}
 
 
@@ -376,8 +374,13 @@ def _get_remote_metrics(host: str) -> dict:
 
 
 def _short_model(model: str) -> str:
-    """Acorta nombres de modelo para display."""
-    return model.replace("openrouter/", "").replace("deepseek/", "")
+    """Acorta nombres de modelo para display.
+    Ej: openrouter-lena/deepseek/deepseek-v4-flash → deepseek-v4-flash
+        openrouter/deepseek/deepseek-v4-pro → deepseek-v4-pro
+    """
+    # Tomar solo la última parte
+    parts = model.split("/")
+    return parts[-1]
 
 
 def get_real_models() -> dict:
@@ -401,30 +404,11 @@ def get_real_models() -> dict:
     except Exception:
         pass
 
-    # 2. main Docker — Claw, Lina, Gemma — query actual config via gateway
-    try:
-        # Find the running moltbot container dynamically
-        ps = subprocess.run(
-            ["docker", "ps", "--filter", "name=moltbot", "--format", "{{.Names}}"],
-            capture_output=True, text=True, timeout=5
-        )
-        container = ps.stdout.strip().split("\n")[0] if ps.stdout.strip() else ""
-        if container:
-            out = subprocess.run(
-                ["docker", "exec", container, "openclaw", "agents", "list", "--json"],
-                capture_output=True, text=True, timeout=8
-            )
-            if out.returncode == 0:
-                import json
-                for agent in json.loads(out.stdout):
-                    agent_id = agent.get("id")
-                    model = agent.get("model", "?")
-                    label_map = {"main": "main-moltbot", "lina": "main-lina", "gemma": "main-gemma"}
-                    key_label = label_map.get(agent_id)
-                    if key_label:
-                        models[key_label] = _short_model(str(model))
-    except Exception:
-        pass
+    # 2. main Docker — Claw, Lina, Gemma
+    # Modelos fijos del Docker (evita docker exec que puede colgar)
+    models["main-moltbot"] = "deepseek-v4-flash"
+    models["main-lina"] = "deepseek-v4-flash"  
+    models["main-gemma"] = "deepseek-v4-flash"
 
     # 3. monitor-1 y monitor-2 — SSH grep goose config
     for sv_id, host in [("monitor-1", "monitor-1"), ("monitor-2", "monitor-2")]:
@@ -443,6 +427,51 @@ def get_real_models() -> dict:
     return models
 
 
+# ── Caches (remote SSH + OpenRouter) ──────────────────────────────────────
+
+_remote_cache: dict[str, dict] = {}
+_remote_cache_ts: dict[str, float] = {}
+_REMOTE_CACHE_TTL = 30  # segundos
+
+_or_cache: dict | None = None
+_or_cache_ts: float = 0
+_OR_CACHE_TTL = 15  # segundos (OpenRouter API es lento)
+
+
+def _get_cached_remote_metrics(host: str, sid: str) -> dict | None:
+    """Remote metrics con cache de {_REMOTE_CACHE_TTL}s."""
+    now = time.time()
+    if sid in _remote_cache:
+        age = now - _remote_cache_ts.get(sid, 0)
+        if age < _REMOTE_CACHE_TTL:
+            return _remote_cache[sid]
+    metrics = _get_remote_metrics(host)
+    _remote_cache[sid] = metrics
+    _remote_cache_ts[sid] = now
+    return metrics
+
+
+async def _get_cached_openrouter_data() -> dict:
+    """OpenRouter data con cache de {_OR_CACHE_TTL}s."""
+    global _or_cache, _or_cache_ts
+    now = time.time()
+    if _or_cache and (now - _or_cache_ts) < _OR_CACHE_TTL:
+        return _or_cache
+    data = await collect_openrouter_data()
+    _or_cache = data
+    _or_cache_ts = now
+    return data
+
+
+def _clear_cache():
+    """Limpia cache forzando próxima lectura fresca."""
+    _remote_cache.clear()
+    _remote_cache_ts.clear()
+    global _or_cache
+    _or_cache = None
+    _or_cache_ts = 0
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -453,7 +482,45 @@ async def api_system():
 
 @app.get("/api/openrouter")
 async def api_openrouter():
-    return await collect_openrouter_data()
+    return await _get_cached_openrouter_data()
+
+
+@app.post("/api/refresh")
+async def api_refresh():
+    """Forza refresco completo (limpia cache remota)."""
+    _clear_cache()
+    return {"refreshed": True}
+
+
+@app.get("/api/servers")
+async def api_servers():
+    """Returns all server data (main + remote) as JSON for live updates."""
+    from concurrent.futures import ThreadPoolExecutor
+    system = get_system_metrics()
+    or_data = await _get_cached_openrouter_data()
+    servers = _build_servers(or_data, system)
+    remote = [(sv["id"], sv["ssh_host"]) for sv in SERVERS if sv.get("ssh_host")]
+    remote_metrics = {}
+    if remote:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            remote_results = {
+                sid: pool.submit(_get_cached_remote_metrics, host, sid)
+                for sid, host in remote
+            }
+            for sv_data in servers:
+                future = remote_results.get(sv_data["id"])
+                if future:
+                    try:
+                        metrics = future.result(timeout=12)
+                    except Exception:
+                        metrics = None
+                    if metrics:
+                        sv_data["metrics"] = metrics
+                        sv_data["has_metrics"] = True
+                        sv_data["name"] = metrics.get("hostname", sv_data["id"])
+                        sv_data["ip"] = metrics.get("tailscale_ip", "")
+                        remote_metrics[sv_data["id"]] = metrics
+    return {"servers": servers, "remote_metrics": remote_metrics}
 
 
 def _build_servers(or_data: dict, system: dict) -> list:
@@ -500,42 +567,97 @@ def _build_servers(or_data: dict, system: dict) -> list:
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    from concurrent.futures import ThreadPoolExecutor
-    system = get_system_metrics()
-    or_data = await collect_openrouter_data()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    servers = _build_servers(or_data, system)
-
-    # Collect remote metrics via SSH (non-blocking in thread pool)
-    # Remote servers have ssh_host set; local main has ssh_host=None
-    remote = [(sv["id"], sv["ssh_host"]) for sv in SERVERS if sv.get("ssh_host")]
-    if remote:
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            remote_results = {sid: pool.submit(_get_remote_metrics, host) for sid, host in remote}
-            for sv_data in servers:
-                future = remote_results.get(sv_data["id"])
-                if future:
-                    try:
-                        metrics = future.result(timeout=12)
-                    except Exception:
-                        metrics = None
-                    if metrics:
-                        sv_data["metrics"] = metrics
-                        sv_data["has_metrics"] = True
-                        # Usar hostname y Tailscale IP dinámicos desde el servidor remoto
-                        if metrics.get("hostname"):
-                            sv_data["name"] = metrics["hostname"]
-                        if metrics.get("tailscale_ip"):
-                            sv_data["ip"] = metrics["tailscale_ip"]
-
     template = templates.get_template("dashboard.html")
+    # Render instantáneo — sin SSH, todo lo llena JS via APIs
     html = template.render(
-        servers=servers,
-        openrouter=or_data,
+        servers=None,
+        openrouter=None,
         now=now,
     )
     return HTMLResponse(content=html)
+
+
+# ── PWA (Progressive Web App) ──────────────────────────────────────────────
+
+
+@app.get("/manifest.json", response_class=JSONResponse)
+async def manifest():
+    return {
+        "name": "Nexo",
+        "short_name": "Nexo",
+        "description": "Panel de monitoreo de servidores y OpenRouter",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0f1117",
+        "theme_color": "#0f1117",
+        "orientation": "any",
+        "icons": [
+            {"src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml"},
+            {"src": "/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml"},
+        ],
+    }
+
+
+@app.get("/icon-{size}.svg")
+async def icon(size: int):
+    color = "#60a5fa"
+    return HTMLResponse(
+        content=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="22" fill="url(#bg)"/>
+  <circle cx="50" cy="40" r="18" fill="none" stroke="#0f1117" stroke-width="2.5" opacity="0.35"/>
+  <circle cx="50" cy="40" r="12" fill="none" stroke="#0f1117" stroke-width="2.5"/>
+  <circle cx="50" cy="40" r="5" fill="#0f1117"/>
+  <line x1="50" y1="48" x2="50" y2="72" stroke="#0f1117" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+  <line x1="28" y1="72" x2="72" y2="72" stroke="#0f1117" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+  <line x1="34" y1="67" x2="34" y2="75" stroke="#0f1117" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="66" y1="67" x2="66" y2="75" stroke="#0f1117" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+</svg>''',
+        media_type="image/svg+xml",
+    )
+
+
+@app.get("/splash-screen.svg")
+async def splash_screen():
+    return HTMLResponse(
+        content='''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#0f1117"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(590,260)">
+    <circle cx="50" cy="40" r="18" fill="none" stroke="#60a5fa" stroke-width="2.5" opacity="0.2"/>
+    <circle cx="50" cy="40" r="12" fill="none" stroke="#60a5fa" stroke-width="2.5"/>
+    <circle cx="50" cy="40" r="5" fill="#60a5fa"/>
+    <line x1="50" y1="48" x2="50" y2="72" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="28" y1="72" x2="72" y2="72" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="34" y1="67" x2="34" y2="75" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+    <line x1="66" y1="67" x2="66" y2="75" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  </g>
+  <text x="640" y="430" font-size="36" text-anchor="middle" fill="#e2e4eb" font-weight="600" font-family="sans-serif" letter-spacing="4">NEXO</text>
+  <text x="640" y="460" font-size="16" text-anchor="middle" fill="#8b90a5" font-family="sans-serif">Cargando...</text>
+</svg>''',
+        media_type="image/svg+xml",
+    )
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return HTMLResponse(
+        content='''self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", () => self.clients.claim());
+self.addEventListener("fetch", (e) => e.respondWith(fetch(e.request)));''',
+        media_type="application/javascript",
+    )
 
 
 # ── Entrypoint ──────────────────────────────────────────────────────────────
