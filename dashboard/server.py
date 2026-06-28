@@ -42,7 +42,7 @@ OPENROUTER_ACCOUNT = list(OPENROUTER_KEYS.values())[0]
 
 # ── Static info ─────────────────────────────────────────────────────────────
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "ticia")
+AGENT_TELEGRAM = os.environ.get("AGENT_TELEGRAM", "@s_ticia_bot")
 PROVIDER = "openrouter"
 MODEL = "deepseek-v4-pro"
 
@@ -190,17 +190,20 @@ def _get_backup_status() -> dict:
     last_run_dt = datetime.fromtimestamp(last_modified)
 
     if has_content and hours_since < 72:
+        # Leer última línea del log para extraer la fecha real
+        last_line = log_path.read_text().strip().split("\n")[-1]
         return {
             "status": "ok",
             "label": "OK",
-            "last_run": last_run_dt.strftime("%Y-%m-%d %H:%M"),
+            "last_run": _extract_backup_date(last_line, last_run_dt),
             "hours_since": hours_since,
         }
     elif has_content:
+        last_line = log_path.read_text().strip().split("\n")[-1]
         return {
             "status": "warning",
             "label": f"Último: hace {int(hours_since)}h",
-            "last_run": last_run_dt.strftime("%Y-%m-%d %H:%M"),
+            "last_run": _extract_backup_date(last_line, last_run_dt),
             "hours_since": hours_since,
         }
     else:
@@ -211,6 +214,40 @@ def _get_backup_status() -> dict:
             "last_run": None,
             "hours_since": None,
         }
+
+
+def _extract_backup_date(last_line: str, fallback_dt: datetime) -> str:
+    """Extrae fecha del último backup desde la última línea del log.
+    
+    Busca patrones como:
+      - "✅ Backup creado: name-backup-20260623 (AVAILABLE)"
+      - "2026-06-23 06:00:01 Backup completado"
+      - Cualquier fecha YYYYMMDD o YYYY-MM-DD
+    """
+    import re
+    # Intentar extraer YYYYMMDD
+    match = re.search(r"(\d{4})(\d{2})(\d{2})", last_line)
+    if match:
+        y, m, d = match.groups()
+        try:
+            dt = datetime(int(y), int(m), int(d))
+            # Devolver día de semana + fecha corta
+            weekdays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+            return f"{weekdays[dt.weekday()]} {d}/{m}"
+        except ValueError:
+            pass
+    # Intentar extraer YYYY-MM-DD
+    match = re.search(r"(\d{4})-(\d{2})-(\d{2})", last_line)
+    if match:
+        y, m, d = match.groups()
+        try:
+            dt = datetime(int(y), int(m), int(d))
+            weekdays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+            return f"{weekdays[dt.weekday()]} {d}/{m}"
+        except ValueError:
+            pass
+    # Fallback: timestamp del archivo
+    return fallback_dt.strftime("%a %H:%M")
 
 
 def _format_uptime(boot_time: float) -> str:
@@ -253,7 +290,7 @@ async def index():
         openrouter=or_data,
         now=now,
         tailscale_ip=TAILSCALE_IP,
-        agent_name=AGENT_NAME,
+        agent_telegram=AGENT_TELEGRAM,
         provider=PROVIDER,
         model=MODEL,
     )

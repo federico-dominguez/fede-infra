@@ -17,6 +17,7 @@ StandardError=journal
 # Set CLAW_OPENROUTER_API_KEY manually or use an EnvironmentFile
 EnvironmentFile=/root/.openclaw-ticia/env.sh
 Environment=AUTO_TOPUP=on
+Environment=AGENT_TELEGRAM=@s_ticia_bot
 
 [Install]
 WantedBy=multi-user.target

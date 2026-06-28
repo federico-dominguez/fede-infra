@@ -186,7 +186,7 @@
           </div>
           <div class="tag">
             <span class="label">Agent</span>
-            <span class="value">{{ agent_name }}</span>
+            <span class="value">{{ agent_telegram }}</span>
           </div>
           <div class="tag">
             <span class="label">Provider</span>
@@ -244,12 +244,12 @@
           </div>
           <div class="tag">
             <span class="label">Gastado</span>
-            <span class="value">${{ "%.4f"|format(openrouter.account.total_usage) }}</span>
+            <span class="value">${{ "%.2f"|format(openrouter.account.total_usage) }}</span>
           </div>
           <div class="tag">
             <span class="label">Restante</span>
             <span class="value" style="color:{% if openrouter.account.credits_left < 1 %}var(--red){% elif openrouter.account.credits_left < 5 %}var(--yellow){% else %}var(--green){% endif %};">
-              ${{ "%.4f"|format(openrouter.account.credits_left) }}
+              ${{ "%.2f"|format(openrouter.account.credits_left) }}
             </span>
           </div>
           <div class="tag">
@@ -287,7 +287,7 @@
                 {% if key.error %}
                   <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>
                 {% else %}
-                  ${{ "%.4f"|format(key.usage) }}
+                  ${{ "%.2f"|format(key.usage) }}
                 {% endif %}
               </td>
             </tr>
