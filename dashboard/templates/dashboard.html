@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="30">
+  <title>Dashboard — Fede</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #232736;
+      --border: #2d3248;
+      --text: #e2e4eb;
+      --text-dim: #8b90a5;
+      --accent: #60a5fa;
+      --green: #4ade80;
+      --yellow: #facc15;
+      --red: #f87171;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container { max-width: 1000px; margin: 0 auto; }
+
+    /* Header */
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+    }
+    header h1 {
+      font-size: 24px; font-weight: 600;
+      display: flex; align-items: center; gap: 10px;
+    }
+    header h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); display: inline-block; }
+    header .meta { color: var(--text-dim); font-size: 13px; text-align: right; }
+    header .meta span { display: block; }
+
+    /* Cards grid */
+    .grid { display: grid; gap: 20px; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+    .card-title {
+      font-size: 14px; font-weight: 500; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .card-title .icon { font-size: 18px; }
+
+    /* Server info row */
+    .server-info {
+      display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+    }
+    .server-info .tag {
+      background: var(--surface2); padding: 6px 14px; border-radius: 8px;
+      font-size: 13px; display: flex; align-items: center; gap: 6px;
+    }
+    .server-info .tag .label { color: var(--text-dim); }
+    .server-info .tag .value { color: var(--text); font-weight: 500; }
+    .server-info .tag .badge {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    }
+    .badge.on { background: var(--green); }
+    .badge.off { background: var(--red); }
+    .badge.warn { background: var(--yellow); }
+
+    /* Gauge bars */
+    .gauge { margin-bottom: 14px; }
+    .gauge:last-child { margin-bottom: 0; }
+    .gauge-header {
+      display: flex; justify-content: space-between; font-size: 13px;
+      margin-bottom: 5px;
+    }
+    .gauge-header .name { color: var(--text-dim); }
+    .gauge-header .pct { font-weight: 600; }
+    .gauge-track {
+      height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden;
+    }
+    .gauge-fill {
+      height: 100%; border-radius: 4px; transition: width 0.5s ease;
+      background: var(--accent);
+    }
+    .gauge-fill.warn { background: var(--yellow); }
+    .gauge-fill.danger { background: var(--red); }
+    .gauge-fill.ok { background: var(--green); }
+
+    /* OpenRouter table */
+    .or-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .or-table th {
+      text-align: left; padding: 10px 8px 8px 8px;
+      color: var(--text-dim); font-weight: 500; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 0.4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .or-table td {
+      padding: 12px 8px; border-bottom: 1px solid var(--border);
+    }
+    .or-table tr:last-child td { border-bottom: none; }
+    .or-table .key-label {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .or-table .key-label .avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; background: var(--surface2);
+    }
+    .or-table .key-label .name { font-weight: 500; }
+    .or-table .key-label .sub { font-size: 11px; color: var(--text-dim); }
+
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    }
+    .topup-on { color: var(--green); }
+    .topup-off { color: var(--text-dim); }
+
+    /* Full width card */
+    .full { grid-column: 1 / -1; }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      .grid-2 { grid-template-columns: 1fr; }
+      header { flex-direction: column; align-items: flex-start; }
+      header .meta { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        <span class="dot"></span>
+        Dashboard
+      </h1>
+      <div class="meta">
+        <span>{{ now }}</span>
+        <span>Actualiza cada 30s · Tailscale: {{ tailscale_ip }}</span>
+      </div>
+    </header>
+
+    <div class="grid grid-2">
+      <!-- ── SERVER CARD ── -->
+      <div class="card full">
+        <div class="card-title"><span class="icon">🖥️</span> Servidor</div>
+
+        <div class="server-info">
+          <div class="tag">
+            <span class="label">Hostname</span>
+            <span class="value">{{ system.hostname }}</span>
+          </div>
+          {% for ip in system.ips %}
+          <div class="tag">
+            <span class="label">{{ ip.interface }}</span>
+            <span class="value">{{ ip.ip }}</span>
+          </div>
+          {% endfor %}
+          <div class="tag">
+            <span class="label">Uptime</span>
+            <span class="value">{{ system.uptime }}</span>
+          </div>
+          <div class="tag">
+            <span class="label">Backup</span>
+            {% if backup_status %}
+            <span class="badge on"></span><span class="value">Activo ({{ backup_hour }})</span>
+            {% else %}
+            <span class="badge off"></span><span class="value">Sin configurar</span>
+            {% endif %}
+          </div>
+          <div class="tag">
+            <span class="label">Agent</span>
+            <span class="value">{{ agent_name }}</span>
+          </div>
+          <div class="tag">
+            <span class="label">Provider</span>
+            <span class="value">{{ provider }}</span>
+          </div>
+          <div class="tag">
+            <span class="label">Model</span>
+            <span class="value">{{ model }}</span>
+          </div>
+        </div>
+
+        <!-- CPU -->
+        <div class="gauge">
+          <div class="gauge-header">
+            <span class="name">CPU</span>
+            <span class="pct">{{ system.cpu_percent }}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill {% if system.cpu_percent > 80 %}danger{% elif system.cpu_percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ system.cpu_percent }}%"></div>
+          </div>
+        </div>
+
+        <!-- RAM -->
+        <div class="gauge">
+          <div class="gauge-header">
+            <span class="name">RAM</span>
+            <span class="pct">{{ system.ram.used }} / {{ system.ram.total }} GB — {{ system.ram.percent }}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill {% if system.ram.percent > 80 %}danger{% elif system.ram.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ system.ram.percent }}%"></div>
+          </div>
+        </div>
+
+        <!-- Disco -->
+        <div class="gauge">
+          <div class="gauge-header">
+            <span class="name">Disco (/)</span>
+            <span class="pct">{{ system.disk.used }} / {{ system.disk.total }} GB — {{ system.disk.percent }}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill {% if system.disk.percent > 80 %}danger{% elif system.disk.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ system.disk.percent }}%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── OPENROUTER CARD ── -->
+      <div class="card full">
+        <div class="card-title"><span class="icon">🤖</span> OpenRouter</div>
+
+        <!-- Account summary -->
+        <div class="server-info" style="margin-bottom:16px;">
+          <div class="tag">
+            <span class="label">Total créditos</span>
+            <span class="value">${{ "%.2f"|format(openrouter.account.total_credits) }}</span>
+          </div>
+          <div class="tag">
+            <span class="label">Gastado</span>
+            <span class="value">${{ "%.4f"|format(openrouter.account.total_usage) }}</span>
+          </div>
+          <div class="tag">
+            <span class="label">Restante</span>
+            <span class="value" style="color:{% if openrouter.account.credits_left < 1 %}var(--red){% elif openrouter.account.credits_left < 5 %}var(--yellow){% else %}var(--green){% endif %};">
+              ${{ "%.4f"|format(openrouter.account.credits_left) }}
+            </span>
+          </div>
+        </div>
+
+        <table class="or-table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Uso individual</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key in openrouter.key_list %}
+            <tr>
+              <td>
+                <div class="key-label">
+                  <div class="avatar">{% if key.label == "main" %}T{% else %}C{% endif %}</div>
+                  <div>
+                    <div class="name">{{ key.label }}</div>
+                    <div class="sub">{% if key.label == "main" %}Ticia{% else %}Claw{% endif %}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                {% if key.error %}
+                  <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>
+                {% else %}
+                  ${{ "%.4f"|format(key.usage) }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer style="margin-top:20px;text-align:center;color:var(--text-dim);font-size:12px;">
+      Dashboard v1 · FastAPI + psutil · Oracle ARM64 · Hecho con ❤️ por Lena
+    </footer>
+  </div>
+</body>
+</html>

@@ -1,0 +1,21 @@
+[Unit]
+Description=Dashboard Fede — FastAPI system & OpenRouter monitor
+After=network-online.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/fede-infra/dashboard
+ExecStart=/usr/bin/python3 /opt/fede-infra/dashboard/server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# OpenRouter keys via environment
+# Set CLAW_OPENROUTER_API_KEY manually or use an EnvironmentFile
+EnvironmentFile=/root/.openclaw-ticia/env.sh
+
+[Install]
+WantedBy=multi-user.target
