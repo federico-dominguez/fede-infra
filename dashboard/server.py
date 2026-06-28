@@ -129,12 +129,15 @@ def get_system_metrics() -> dict:
         ["hostname"], capture_output=True, text=True, timeout=5
     ).stdout.strip()
 
-    # Obtener IPs (pública y Tailscale)
-    ips = []
-    for iface, addrs in psutil.net_if_addrs().items():
-        for addr in addrs:
-            if addr.family == 2:  # AF_INET
-                ips.append({"interface": iface, "ip": addr.address})
+    # Obtener IPs (solo interfaces relevantes)
+    IMPORTANT_IFACES = {"tailscale0", "enp0s6", "lo"}
+    ips = [
+        {"interface": iface, "ip": addr.address}
+        for iface, addrs in psutil.net_if_addrs().items()
+        if iface in IMPORTANT_IFACES
+        for addr in addrs
+        if addr.family == 2  # AF_INET
+    ]
 
     return {
         "hostname": hostname,
@@ -156,25 +159,58 @@ def get_system_metrics() -> dict:
 
 
 def _get_backup_status() -> dict:
-    """Checkea estado del backup OCI vía timestamp del log."""
+    """Checkea estado del backup OCI vía timestamp del log.
+    
+    Returns:
+        status: "ok" (verde), "pending" (amarillo), "warning" (rojo)
+    """
     log_path = Path("/var/log/oci-backup.log")
+    script_path = Path("/root/.openclaw-ticia/workspace/backup-oci.sh")
+
     if not log_path.exists():
-        return {"status": False, "label": "Sin ejecutar", "last_run": None, "hours_since": None}
+        # Log no existe pero el script sí → configurado pero sin ejecutar
+        if script_path.exists():
+            return {
+                "status": "pending",
+                "label": "Próximo: Lun 6AM",
+                "last_run": None,
+                "hours_since": None,
+            }
+        return {
+            "status": "none",
+            "label": "No configurado",
+            "last_run": None,
+            "hours_since": None,
+        }
 
     last_modified = log_path.stat().st_mtime
     now = datetime.now().timestamp()
     hours_since = round((now - last_modified) / 3600, 1)
-    status = hours_since < 72
-
+    has_content = log_path.stat().st_size > 0
     last_run_dt = datetime.fromtimestamp(last_modified)
-    label = "Activo" if status else "Inactivo"
 
-    return {
-        "status": status,
-        "label": label,
-        "last_run": last_run_dt.strftime("%Y-%m-%d %H:%M"),
-        "hours_since": hours_since,
-    }
+    if has_content and hours_since < 72:
+        return {
+            "status": "ok",
+            "label": "OK",
+            "last_run": last_run_dt.strftime("%Y-%m-%d %H:%M"),
+            "hours_since": hours_since,
+        }
+    elif has_content:
+        return {
+            "status": "warning",
+            "label": f"Último: hace {int(hours_since)}h",
+            "last_run": last_run_dt.strftime("%Y-%m-%d %H:%M"),
+            "hours_since": hours_since,
+        }
+    else:
+        # Log existe pero vacío → script configurado, backup todavía no corrió
+        return {
+            "status": "pending",
+            "label": "Próximo: Lun 6AM",
+            "last_run": None,
+            "hours_since": None,
+        }
 
 
 def _format_uptime(boot_time: float) -> str:

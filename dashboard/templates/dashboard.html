@@ -174,10 +174,12 @@
           </div>
           <div class="tag">
             <span class="label">Backup</span>
-            {% if system.backup.status %}
+            {% if system.backup.status == "ok" %}
             <span class="badge on"></span><span class="value">{{ system.backup.label }} ({{ system.backup.last_run }})</span>
-            {% elif system.backup.last_run %}
-            <span class="badge warn"></span><span class="value">{{ system.backup.label }} — {{ system.backup.hours_since }}h sin backup</span>
+            {% elif system.backup.status == "pending" %}
+            <span class="badge warn"></span><span class="value">{{ system.backup.label }}</span>
+            {% elif system.backup.status == "warning" %}
+            <span class="badge off" style="background:var(--red)"></span><span class="value" style="color:var(--red)">⚠️ {{ system.backup.label }}</span>
             {% else %}
             <span class="badge off"></span><span class="value">{{ system.backup.label }}</span>
             {% endif %}
