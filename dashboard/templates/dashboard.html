@@ -146,6 +146,35 @@
 
     <div class="grid">
 
+      <!-- ── OPENROUTER ACCOUNT CARD (arriba) ── -->
+      <div class="card">
+        <div class="card-title"><span class="icon">🤖</span> OpenRouter — Cuenta</div>
+        <div class="server-info" style="margin-bottom:0;">
+          <div class="tag">
+            <span class="label">Total créditos</span>
+            <span class="value">${{ "%.2f"|format(openrouter.account.total_credits) }}</span>
+          </div>
+          <div class="tag">
+            <span class="label">Gastado</span>
+            <span class="value">${{ "%.2f"|format(openrouter.account.total_usage) }}</span>
+          </div>
+          <div class="tag">
+            <span class="label">Restante</span>
+            <span class="value" style="color:{% if openrouter.account.credits_left < 1 %}var(--red){% elif openrouter.account.credits_left < 5 %}var(--yellow){% else %}var(--green){% endif %};">
+              ${{ "%.2f"|format(openrouter.account.credits_left) }}
+            </span>
+          </div>
+          <div class="tag">
+            <span class="label">Auto top-up</span>
+            {% if openrouter.auto_topup %}
+            <span class="badge on"></span><span class="value topup-on">Encendido</span>
+            {% else %}
+            <span class="badge off"></span><span class="value topup-off">Apagado</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
       <!-- ── SERVER CARDS ── -->
       {% for sv in servers %}
       <div class="card">
@@ -241,34 +270,7 @@
       </div>
       {% endfor %}
 
-      <!-- ── OPENROUTER ACCOUNT CARD ── -->
-      <div class="card">
-        <div class="card-title"><span class="icon">🤖</span> OpenRouter — Cuenta</div>
-        <div class="server-info" style="margin-bottom:0;">
-          <div class="tag">
-            <span class="label">Total créditos</span>
-            <span class="value">${{ "%.2f"|format(openrouter.account.total_credits) }}</span>
-          </div>
-          <div class="tag">
-            <span class="label">Gastado</span>
-            <span class="value">${{ "%.2f"|format(openrouter.account.total_usage) }}</span>
-          </div>
-          <div class="tag">
-            <span class="label">Restante</span>
-            <span class="value" style="color:{% if openrouter.account.credits_left < 1 %}var(--red){% elif openrouter.account.credits_left < 5 %}var(--yellow){% else %}var(--green){% endif %};">
-              ${{ "%.2f"|format(openrouter.account.credits_left) }}
-            </span>
-          </div>
-          <div class="tag">
-            <span class="label">Auto top-up</span>
-            {% if openrouter.auto_topup %}
-            <span class="badge on"></span><span class="value topup-on">Encendido</span>
-            {% else %}
-            <span class="badge off"></span><span class="value topup-off">Apagado</span>
-            {% endif %}
-          </div>
-        </div>
-      </div>
+
     </div>
 
     <footer style="margin-top:20px;text-align:center;color:var(--text-dim);font-size:12px;">
