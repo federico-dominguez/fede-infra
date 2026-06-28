@@ -43,20 +43,45 @@ OPENROUTER_KEYS = {
 
 # Display info para cada key (nombre legible, avatar, servidor)
 KEY_DISPLAY = {
-    "main": {"name": "Ticia", "avatar": "T", "server": "Oracle ARM64"},
-    "main-moltbot": {"name": "Claw", "avatar": "C", "server": "Docker"},
-    "monitor-1": {"name": "Mia", "avatar": "M", "server": "monitor-1"},
-    "monitor-2": {"name": "Cline", "avatar": "L", "server": "monitor-2"},
+    "main": {"name": "Ticia", "avatar": "T", "server_id": "main"},
+    "main-moltbot": {"name": "Claw", "avatar": "C", "server_id": "main"},
+    "monitor-1": {"name": "Mia", "avatar": "M", "server_id": "monitor-1"},
+    "monitor-2": {"name": "Cline", "avatar": "L", "server_id": "monitor-2"},
 }
+
+# Servidores monitoreados
+SERVERS = [
+    {
+        "id": "main",
+        "name": "main",
+        "tailscale_ip": TAILSCALE_IP,
+        "agent": os.environ.get("AGENT_TELEGRAM", "@s_ticia_bot"),
+        "provider": "openrouter",
+        "model": "deepseek-v4-pro",
+        "has_metrics": True,
+    },
+    {
+        "id": "monitor-1",
+        "name": "monitor-1",
+        "tailscale_ip": "100.73.29.14",
+        "agent": "@Mia_bot",
+        "provider": "openrouter",
+        "model": "auto",
+        "has_metrics": False,
+    },
+    {
+        "id": "monitor-2",
+        "name": "monitor-2",
+        "tailscale_ip": "100.68.19.107",
+        "agent": "@Cline_bot",
+        "provider": "openrouter",
+        "model": "auto",
+        "has_metrics": False,
+    },
+]
 
 # OpenRouter: account-level credits (shared entre ambas keys)
 OPENROUTER_ACCOUNT = list(OPENROUTER_KEYS.values())[0]
-
-# ── Static info ─────────────────────────────────────────────────────────────
-
-AGENT_TELEGRAM = os.environ.get("AGENT_TELEGRAM", "@s_ticia_bot")
-PROVIDER = "openrouter"
-MODEL = "deepseek-v4-pro"
 
 # ── App setup ───────────────────────────────────────────────────────────────
 
@@ -115,13 +140,13 @@ async def collect_openrouter_data() -> dict:
     for label, api_key in OPENROUTER_KEYS.items():
         info = await fetch_openrouter_key_info(api_key, label)
         key_suffix = api_key[-4:] if len(api_key) >= 4 else api_key
-        display = KEY_DISPLAY.get(label, {"name": label, "avatar": "?", "server": "?"})
+        display = KEY_DISPLAY.get(label, {"name": label, "avatar": "?", "server_id": "?"})
         keys.append(
             {
                 "label": label,
                 "display_name": display["name"],
                 "avatar": display["avatar"],
-                "server": display["server"],
+                "server": display["server_id"],
                 "key_suffix": key_suffix,
                 "usage": info.get("usage", 0),
                 "is_free_tier": info.get("is_free_tier", False),
@@ -281,6 +306,58 @@ def _format_uptime(boot_time: float) -> str:
     return " ".join(parts)
 
 
+# ── Remote metrics via SSH ─────────────────────────────────────────────────
+
+
+def _get_remote_metrics(host: str) -> dict:
+    """SSH into remote host and collect CPU/RAM/Disk metrics."""
+    cmd = (
+        "free -m | awk '/Mem:/{printf \"%.1f %.1f %.1f\",$2/1024,$3/1024,($3/$2)*100}'; "
+        "echo '---'; "
+        "df -h / | awk 'NR==2{gsub(/G/,\"\",$2);gsub(/G/,\"\",$3);gsub(/%/,\"\",$5);print $2,$3,$5}'; "
+        "echo '---'; "
+        "top -bn1 | awk '/Cpu/{print 100-$8}'; "
+        "echo '---'; "
+        "uptime -s"
+    )
+    try:
+        out = subprocess.run(
+            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", host, cmd],
+            capture_output=True, text=True, timeout=10,
+        )
+        parts = out.stdout.strip().split('---')
+        if len(parts) < 4:
+            raise ValueError(f"Unexpected output: {out.stdout[:100]}")
+        ram_total, ram_used, ram_pct = parts[0].strip().split()
+        disk_total, disk_used, disk_pct = parts[1].strip().split()
+        cpu_pct = float(parts[2].strip())
+        uptime_raw = parts[3].strip()
+        # Parse uptime from "2026-06-28 12:00:00" format
+        try:
+            boot = datetime.strptime(uptime_raw, "%Y-%m-%d %H:%M:%S")
+            delta = datetime.now() - boot
+            days = delta.days
+            hours, rem = divmod(delta.seconds, 3600)
+            mins, _ = divmod(rem, 60)
+            parts_u = []
+            if days > 0: parts_u.append(f"{days}d")
+            if hours > 0: parts_u.append(f"{hours}h")
+            parts_u.append(f"{mins}m")
+            uptime = " ".join(parts_u)
+        except Exception:
+            uptime = uptime_raw
+        return {
+            "cpu_percent": round(cpu_pct, 1),
+            "ram": {"total": float(ram_total), "used": float(ram_used), "percent": round(float(ram_pct), 1)},
+            "disk": {"total": float(disk_total), "used": float(disk_used), "percent": round(float(disk_pct), 1)},
+            "uptime": uptime,
+            "ips": [{"interface": "tailscale0", "ip": host}],
+            "backup": {"status": "none", "label": "N/A", "last_run": None, "hours_since": None},
+        }
+    except Exception:
+        return None
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -294,21 +371,59 @@ async def api_openrouter():
     return await collect_openrouter_data()
 
 
+def _build_servers(or_data: dict, system: dict) -> list:
+    """Arma lista de servidores con sus keys asociadas para el template."""
+    key_by_label = {k["label"]: k for k in or_data.get("key_list", [])}
+    servers_out = []
+    for sv in SERVERS:
+        sv_data = dict(sv)  # copy
+        # Buscar keys de este servidor
+        sv_keys = []
+        for label, display in KEY_DISPLAY.items():
+            if display["server_id"] == sv["id"]:
+                key_info = key_by_label.get(label, {})
+                sv_keys.append({
+                    "label": label,
+                    "display_name": display["name"],
+                    "avatar": display["avatar"],
+                    "key_suffix": key_info.get("key_suffix", ""),
+                    "usage": key_info.get("usage", 0),
+                })
+        sv_data["keys"] = sv_keys
+        # Si es main, pasar métricas
+        if sv["id"] == "main":
+            sv_data["metrics"] = system
+        servers_out.append(sv_data)
+    return servers_out
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
+    import concurrent.futures
     system = get_system_metrics()
     or_data = await collect_openrouter_data()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    servers = _build_servers(or_data, system)
+
+    # Collect remote metrics via SSH in parallel
+    remote_hosts = {sv["id"]: sv["tailscale_ip"] for sv in SERVERS if not sv.get("has_metrics")}
+    if remote_hosts:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {sid: pool.submit(_get_remote_metrics, ip) for sid, ip in remote_hosts.items()}
+            for sv_data in servers:
+                if sv_data["id"] in futures:
+                    metrics = futures[sv_data["id"]].result()
+                    if metrics:
+                        sv_data["metrics"] = metrics
+                        sv_data["has_metrics"] = True
+
     template = templates.get_template("dashboard.html")
     html = template.render(
-        system=system,
+        servers=servers,
         openrouter=or_data,
         now=now,
         tailscale_ip=TAILSCALE_IP,
-        agent_telegram=AGENT_TELEGRAM,
-        provider=PROVIDER,
-        model=MODEL,
     )
     return HTMLResponse(content=html)
 

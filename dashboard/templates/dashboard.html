@@ -47,7 +47,6 @@
 
     /* Cards grid */
     .grid { display: grid; gap: 20px; }
-    .grid-2 { grid-template-columns: 1fr 1fr; }
 
     .card {
       background: var(--surface);
@@ -99,41 +98,34 @@
     .gauge-fill.danger { background: var(--red); }
     .gauge-fill.ok { background: var(--green); }
 
-    /* OpenRouter table */
-    .or-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .or-table th {
+    /* Keys table */
+    .key-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .key-table th {
       text-align: left; padding: 10px 8px 8px 8px;
       color: var(--text-dim); font-weight: 500; font-size: 12px;
       text-transform: uppercase; letter-spacing: 0.4px;
       border-bottom: 1px solid var(--border);
     }
-    .or-table td {
+    .key-table td {
       padding: 12px 8px; border-bottom: 1px solid var(--border);
     }
-    .or-table tr:last-child td { border-bottom: none; }
-    .or-table .key-label {
+    .key-table tr:last-child td { border-bottom: none; }
+    .key-label {
       display: flex; align-items: center; gap: 8px;
     }
-    .or-table .key-label .avatar {
+    .key-label .avatar {
       width: 28px; height: 28px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
       font-size: 12px; font-weight: 700; background: var(--surface2);
     }
-    .or-table .key-label .name { font-weight: 500; }
-    .or-table .key-label .sub { font-size: 11px; color: var(--text-dim); }
+    .key-label .name { font-weight: 500; }
+    .key-label .sub { font-size: 11px; color: var(--text-dim); }
 
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
-    }
     .topup-on { color: var(--green); }
     .topup-off { color: var(--text-dim); }
 
-    /* Full width card */
-    .full { grid-column: 1 / -1; }
-
     /* Responsive */
     @media (max-width: 700px) {
-      .grid-2 { grid-template-columns: 1fr; }
       header { flex-direction: column; align-items: flex-start; }
       header .meta { text-align: left; }
     }
@@ -148,96 +140,111 @@
       </h1>
       <div class="meta">
         <span>{{ now }}</span>
-        <span>Actualiza cada 30s · Tailscale: {{ tailscale_ip }}</span>
+        <span>Actualiza cada 30s · Tailscale</span>
       </div>
     </header>
 
-    <div class="grid grid-2">
-      <!-- ── SERVER CARD ── -->
-      <div class="card full">
-        <div class="card-title"><span class="icon">🖥️</span> Servidor</div>
+    <div class="grid">
+
+      <!-- ── SERVER CARDS ── -->
+      {% for sv in servers %}
+      <div class="card">
+        <div class="card-title"><span class="icon">🖥️</span> {{ sv.name }}</div>
 
         <div class="server-info">
-          <div class="tag">
-            <span class="label">Hostname</span>
-            <span class="value">{{ system.hostname }}</span>
-          </div>
-          {% for ip in system.ips %}
-          <div class="tag">
-            <span class="label">{{ ip.interface }}</span>
-            <span class="value">{{ ip.ip }}</span>
-          </div>
+          <div class="tag"><span class="label">Hostname</span><span class="value">{{ sv.name }}</span></div>
+          <div class="tag"><span class="label">Tailscale</span><span class="value">{{ sv.tailscale_ip }}</span></div>
+          {% if sv.has_metrics %}
+          {% for ip in sv.metrics.ips %}
+          <div class="tag"><span class="label">{{ ip.interface }}</span><span class="value">{{ ip.ip }}</span></div>
           {% endfor %}
-          <div class="tag">
-            <span class="label">Uptime</span>
-            <span class="value">{{ system.uptime }}</span>
-          </div>
+          <div class="tag"><span class="label">Uptime</span><span class="value">{{ sv.metrics.uptime }}</span></div>
           <div class="tag">
             <span class="label">Backup</span>
-            {% if system.backup.status == "ok" %}
-            <span class="badge on"></span><span class="value">{{ system.backup.label }} ({{ system.backup.last_run }})</span>
-            {% elif system.backup.status == "pending" %}
-            <span class="badge warn"></span><span class="value">{{ system.backup.label }}</span>
-            {% elif system.backup.status == "warning" %}
-            <span class="badge off" style="background:var(--red)"></span><span class="value" style="color:var(--red)">⚠️ {{ system.backup.label }}</span>
+            {% if sv.metrics.backup.status == "ok" %}
+            <span class="badge on"></span><span class="value">{{ sv.metrics.backup.label }} ({{ sv.metrics.backup.last_run }})</span>
+            {% elif sv.metrics.backup.status == "pending" %}
+            <span class="badge warn"></span><span class="value">{{ sv.metrics.backup.label }}</span>
+            {% elif sv.metrics.backup.status == "warning" %}
+            <span class="badge off" style="background:var(--red)"></span><span class="value" style="color:var(--red)">⚠️ {{ sv.metrics.backup.label }}</span>
             {% else %}
-            <span class="badge off"></span><span class="value">{{ system.backup.label }}</span>
+            <span class="badge off"></span><span class="value">{{ sv.metrics.backup.label }}</span>
             {% endif %}
           </div>
-          <div class="tag">
-            <span class="label">Agent</span>
-            <span class="value">{{ agent_telegram }}</span>
-          </div>
-          <div class="tag">
-            <span class="label">Provider</span>
-            <span class="value">{{ provider }}</span>
-          </div>
-          <div class="tag">
-            <span class="label">Model</span>
-            <span class="value">{{ model }}</span>
-          </div>
+          {% endif %}
+          <div class="tag"><span class="label">Agent</span><span class="value">{{ sv.agent }}</span></div>
+          <div class="tag"><span class="label">Provider</span><span class="value">{{ sv.provider }}</span></div>
+          <div class="tag"><span class="label">Model</span><span class="value">{{ sv.model }}</span></div>
         </div>
 
-        <!-- CPU -->
+        {% if sv.has_metrics %}
+        <!-- Métricas solo para main -->
         <div class="gauge">
           <div class="gauge-header">
             <span class="name">CPU</span>
-            <span class="pct">{{ system.cpu_percent }}%</span>
+            <span class="pct">{{ sv.metrics.cpu_percent }}%</span>
           </div>
           <div class="gauge-track">
-            <div class="gauge-fill {% if system.cpu_percent > 80 %}danger{% elif system.cpu_percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ system.cpu_percent }}%"></div>
+            <div class="gauge-fill {% if sv.metrics.cpu_percent > 80 %}danger{% elif sv.metrics.cpu_percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ sv.metrics.cpu_percent }}%"></div>
           </div>
         </div>
-
-        <!-- RAM -->
         <div class="gauge">
           <div class="gauge-header">
             <span class="name">RAM</span>
-            <span class="pct">{{ system.ram.used }} / {{ system.ram.total }} GB — {{ system.ram.percent }}%</span>
+            <span class="pct">{{ sv.metrics.ram.used }} / {{ sv.metrics.ram.total }} GB — {{ sv.metrics.ram.percent }}%</span>
           </div>
           <div class="gauge-track">
-            <div class="gauge-fill {% if system.ram.percent > 80 %}danger{% elif system.ram.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ system.ram.percent }}%"></div>
+            <div class="gauge-fill {% if sv.metrics.ram.percent > 80 %}danger{% elif sv.metrics.ram.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ sv.metrics.ram.percent }}%"></div>
           </div>
         </div>
-
-        <!-- Disco -->
         <div class="gauge">
           <div class="gauge-header">
             <span class="name">Disco (/)</span>
-            <span class="pct">{{ system.disk.used }} / {{ system.disk.total }} GB — {{ system.disk.percent }}%</span>
+            <span class="pct">{{ sv.metrics.disk.used }} / {{ sv.metrics.disk.total }} GB — {{ sv.metrics.disk.percent }}%</span>
           </div>
           <div class="gauge-track">
-            <div class="gauge-fill {% if system.disk.percent > 80 %}danger{% elif system.disk.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ system.disk.percent }}%"></div>
+            <div class="gauge-fill {% if sv.metrics.disk.percent > 80 %}danger{% elif sv.metrics.disk.percent > 60 %}warn{% else %}ok{% endif %}" style="width:{{ sv.metrics.disk.percent }}%"></div>
           </div>
         </div>
+        {% endif %}
+
+        {% if sv.get("keys") %}
+        <div style="margin-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};padding-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};border-top:{% if sv.has_metrics %}1px solid var(--border){% else %}none{% endif %};">
+          <div class="card-title" style="margin-bottom:10px;"><span class="icon">🔑</span> OpenRouter Keys</div>
+          <table class="key-table">
+            <thead><tr><th>Key</th><th>API Key</th><th>Uso</th></tr></thead>
+            <tbody>
+            {% for key in sv.get("keys", []) %}
+            <tr>
+              <td>
+                <div class="key-label">
+                  <div class="avatar">{{ key.avatar }}</div>
+                  <div>
+                    <div class="name">{{ key.display_name }}</div>
+                  </div>
+                </div>
+              </td>
+              <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
+              <td>
+                {% if key.error %}
+                <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>
+                {% else %}
+                ${{ "%.2f"|format(key.usage) }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
       </div>
+      {% endfor %}
 
-      <!-- ── OPENROUTER CARD ── -->
-      <div class="card full">
-        <div class="card-title"><span class="icon">🤖</span> OpenRouter</div>
-
-        <!-- Account summary -->
-        <div class="server-info" style="margin-bottom:16px;">
+      <!-- ── OPENROUTER ACCOUNT CARD ── -->
+      <div class="card">
+        <div class="card-title"><span class="icon">🤖</span> OpenRouter — Cuenta</div>
+        <div class="server-info" style="margin-bottom:0;">
           <div class="tag">
             <span class="label">Total créditos</span>
             <span class="value">${{ "%.2f"|format(openrouter.account.total_credits) }}</span>
@@ -261,44 +268,11 @@
             {% endif %}
           </div>
         </div>
-
-        <table class="or-table">
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>API Key</th>
-              <th>Uso individual</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for key in openrouter.key_list %}
-            <tr>
-              <td>
-                <div class="key-label">
-                  <div class="avatar">{{ key.avatar }}</div>
-                  <div>
-                    <div class="name">{{ key.display_name }}</div>
-                    <div class="sub">{{ key.server }}</div>
-                  </div>
-                </div>
-              </td>
-              <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
-              <td>
-                {% if key.error %}
-                  <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>
-                {% else %}
-                  ${{ "%.2f"|format(key.usage) }}
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
       </div>
     </div>
 
     <footer style="margin-top:20px;text-align:center;color:var(--text-dim);font-size:12px;">
-      Dashboard v1 · FastAPI + psutil · Oracle ARM64 · Hecho con ❤️ por Lena
+      Dashboard v1 · FastAPI + psutil · Hecho con ❤️ por Lena 🐱‍👤
     </footer>
   </div>
 </body>
