@@ -31,6 +31,7 @@ AUTO_TOPUP = os.environ.get("AUTO_TOPUP", "off").lower() in ("on", "true", "1", 
 
 # OpenRouter keys
 #  - "main" (Ticia via env OPENROUTER_API_KEY)
+#  - "main-1-key" (Lena via env LENA_OPENROUTER_API_KEY)
 #  - "main-moltbot" (Claw via env CLAW_OPENROUTER_API_KEY)
 #  - "monitor-1" (Mia via env MONITOR1_OPENROUTER_API_KEY)
 #  - "monitor-2" (Cline via env MONITOR2_OPENROUTER_API_KEY)
@@ -38,6 +39,7 @@ OPENROUTER_KEYS = {
     name: key
     for name, key in [
         ("main", os.environ.get("OPENROUTER_API_KEY", "")),
+        ("main-1-key", os.environ.get("LENA_OPENROUTER_API_KEY", "")),
         ("main-moltbot", os.environ.get("CLAW_OPENROUTER_API_KEY", "")),
         ("monitor-1", os.environ.get("MONITOR1_OPENROUTER_API_KEY", "")),
         ("monitor-2", os.environ.get("MONITOR2_OPENROUTER_API_KEY", "")),
@@ -45,13 +47,13 @@ OPENROUTER_KEYS = {
     if key
 }
 
-# Display info para cada key (nombre legible, avatar, servidor)
+# Display info para cada key (nombre legible, avatar, servidor, bot_id de Telegram)
 KEY_DISPLAY = {
-    "main": {"name": "Ticia", "avatar": "T", "server_id": "main"},
-    "main-moltbot": {"name": "Claw", "avatar": "C", "server_id": "main"},
-    "main-lena": {"name": "Lena", "avatar": "L", "server_id": "main"},
-    "monitor-1": {"name": "Mia", "avatar": "M", "server_id": "monitor-1"},
-    "monitor-2": {"name": "Cline", "avatar": "L", "server_id": "monitor-2"},
+    "main": {"name": "Ticia", "avatar": "🧠", "server_id": "main", "bot_id": "@s_ticia_bot"},
+    "main-moltbot": {"name": "Claw", "avatar": "🦞", "server_id": "main", "bot_id": "—"},
+    "main-1-key": {"name": "Lena", "avatar": "🐱‍👤", "server_id": "main", "bot_id": "—"},
+    "monitor-1": {"name": "Mia", "avatar": "🤖", "server_id": "monitor-1", "bot_id": "@s_mia_bot"},
+    "monitor-2": {"name": "Cline", "avatar": "⚡", "server_id": "monitor-2", "bot_id": "@s_cline_bot"},
 }
 
 # Servidores monitoreados (ip, hostname detectados dinámicamente)
@@ -402,7 +404,7 @@ def get_real_models() -> dict:
             if agent_id == "main":
                 models["main"] = _short_model(str(model))
             elif agent_id == "lena":
-                models["main-lena"] = _short_model(str(model))
+                models["main-1-key"] = _short_model(str(model))
     except Exception:
         pass
 
@@ -450,32 +452,37 @@ async def api_openrouter():
 
 
 def _build_servers(or_data: dict, system: dict) -> list:
-    """Arma lista de servidores con sus keys asociadas para el template."""
+    """Arma lista de servidores con sus keys asociadas (con bot_id y provider)."""
     global _real_models
     _real_models = get_real_models()
     key_by_label = {k["label"]: k for k in or_data.get("key_list", [])}
     servers_out = []
     for sv in SERVERS:
-        sv_data = dict(sv)  # copy
-        sv_data["name"] = sv["id"]  # fallback; será reemplazado por métricas si disponibles
-        sv_data["ip"] = ""  # fallback; se llena con métricas
+        sv_data = dict(sv)
+        sv_data["name"] = sv["id"]
+        sv_data["ip"] = ""
         sv_data["metrics"] = None
         sv_data["has_metrics"] = False
-        # Buscar keys de este servidor
+        # Keys de este servidor con bot_id y provider
         sv_keys = []
         for label, display in KEY_DISPLAY.items():
             if display["server_id"] == sv["id"]:
                 key_info = key_by_label.get(label, {})
+                suffix = key_info.get("key_suffix", "")
+                if not suffix:
+                    suffix = "shrd" if "lena" in label.lower() else ""
                 sv_keys.append({
                     "label": label,
                     "display_name": display["name"],
                     "avatar": display["avatar"],
+                    "bot_id": display.get("bot_id", "—"),
+                    "provider": "openrouter",
                     "model": _real_models.get(label, "?"),
-                    "key_suffix": key_info.get("key_suffix", "") or ("shrd" if label == "main-lena" else ""),
+                    "key_suffix": suffix,
                     "usage": key_info.get("usage", 0),
+                    "error": key_info.get("error"),
                 })
         sv_data["keys"] = sv_keys
-        # main tiene métricas locales
         if sv["id"] == "main":
             sv_data["metrics"] = system
             sv_data["has_metrics"] = True

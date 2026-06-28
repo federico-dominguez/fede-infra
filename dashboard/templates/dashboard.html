@@ -201,9 +201,6 @@
             {% endif %}
           </div>
           {% endif %}
-          <div class="tag"><span class="label">Agent</span><span class="value">{{ sv.agent }}</span></div>
-          <div class="tag"><span class="label">Provider</span><span class="value">{{ sv.provider }}</span></div>
-
         </div>
 
         {% if sv.has_metrics %}
@@ -239,20 +236,16 @@
 
         {% if sv.get("keys") %}
         <div style="margin-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};padding-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};border-top:{% if sv.has_metrics %}1px solid var(--border){% else %}none{% endif %};">
-          <div class="card-title" style="margin-bottom:10px;"><span class="icon">🔑</span> OpenRouter Keys</div>
+          <div class="card-title" style="margin-bottom:10px;"><span class="icon">🤖</span> Agentes</div>
           <table class="key-table">
-            <thead><tr><th>Key</th><th>Model</th><th>API Key</th><th>Uso</th></tr></thead>
+            <thead><tr><th></th><th>Nombre</th><th>Bot ID</th><th>Provider</th><th>Model</th><th>API Key</th><th>Consumo</th></tr></thead>
             <tbody>
             {% for key in sv.get("keys", []) %}
             <tr>
-              <td>
-                <div class="key-label">
-                  <div class="avatar">{{ key.avatar }}</div>
-                  <div>
-                    <div class="name">{{ key.display_name }}</div>
-                  </div>
-                </div>
-              </td>
+              <td><span style="font-size:20px;">{{ key.avatar }}</span></td>
+              <td><span style="font-weight:500;">{{ key.display_name }}</span></td>
+              <td><code style="font-size:12px;color:var(--text-dim);">{{ key.bot_id }}</code></td>
+              <td><code style="font-size:12px;color:var(--accent);">{{ key.provider }}</code></td>
               <td><code style="font-size:12px;color:var(--accent);">{{ key.model }}</code></td>
               <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
               <td>
@@ -270,7 +263,6 @@
         {% endif %}
       </div>
       {% endfor %}
-
 
     </div>
 
