@@ -41,6 +41,14 @@ OPENROUTER_KEYS = {
     if key
 }
 
+# Display info para cada key (nombre legible, avatar, servidor)
+KEY_DISPLAY = {
+    "main": {"name": "Ticia", "avatar": "T", "server": "Oracle ARM64"},
+    "main-moltbot": {"name": "Claw", "avatar": "C", "server": "Docker"},
+    "monitor-1": {"name": "Mia", "avatar": "M", "server": "monitor-1"},
+    "monitor-2": {"name": "Cline", "avatar": "L", "server": "monitor-2"},
+}
+
 # OpenRouter: account-level credits (shared entre ambas keys)
 OPENROUTER_ACCOUNT = list(OPENROUTER_KEYS.values())[0]
 
@@ -107,9 +115,13 @@ async def collect_openrouter_data() -> dict:
     for label, api_key in OPENROUTER_KEYS.items():
         info = await fetch_openrouter_key_info(api_key, label)
         key_suffix = api_key[-4:] if len(api_key) >= 4 else api_key
+        display = KEY_DISPLAY.get(label, {"name": label, "avatar": "?", "server": "?"})
         keys.append(
             {
                 "label": label,
+                "display_name": display["name"],
+                "avatar": display["avatar"],
+                "server": display["server"],
                 "key_suffix": key_suffix,
                 "usage": info.get("usage", 0),
                 "is_free_tier": info.get("is_free_tier", False),
