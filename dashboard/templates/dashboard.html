@@ -250,12 +250,21 @@
               ${{ "%.4f"|format(openrouter.account.credits_left) }}
             </span>
           </div>
+          <div class="tag">
+            <span class="label">Auto top-up</span>
+            {% if openrouter.auto_topup %}
+            <span class="badge on"></span><span class="value topup-on">Encendido</span>
+            {% else %}
+            <span class="badge off"></span><span class="value topup-off">Apagado</span>
+            {% endif %}
+          </div>
         </div>
 
         <table class="or-table">
           <thead>
             <tr>
               <th>Key</th>
+              <th>API Key</th>
               <th>Uso individual</th>
             </tr>
           </thead>
@@ -271,6 +280,7 @@
                   </div>
                 </div>
               </td>
+              <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
               <td>
                 {% if key.error %}
                   <span style="color:var(--yellow);font-size:12px;">{{ key.error[:40] }}</span>

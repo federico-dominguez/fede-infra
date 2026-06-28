@@ -16,6 +16,7 @@ StandardError=journal
 # OpenRouter keys via environment
 # Set CLAW_OPENROUTER_API_KEY manually or use an EnvironmentFile
 EnvironmentFile=/root/.openclaw-ticia/env.sh
+Environment=AUTO_TOPUP=on
 
 [Install]
 WantedBy=multi-user.target

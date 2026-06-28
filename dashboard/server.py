@@ -22,6 +22,9 @@ from jinja2 import Environment, FileSystemLoader
 TAILSCALE_IP = "100.109.36.3"
 PORT = 8080
 
+# Auto top-up status (set via env var, OpenRouter API no lo expone)
+AUTO_TOPUP = os.environ.get("AUTO_TOPUP", "off").lower() in ("on", "true", "1", "yes")
+
 # OpenRouter keys
 #  - "main" (Ticia)
 #  - "main-moltbot" (Claw)
@@ -99,15 +102,17 @@ async def collect_openrouter_data() -> dict:
     keys = []
     for label, api_key in OPENROUTER_KEYS.items():
         info = await fetch_openrouter_key_info(api_key, label)
+        key_suffix = api_key[-4:] if len(api_key) >= 4 else api_key
         keys.append(
             {
                 "label": label,
+                "key_suffix": key_suffix,
                 "usage": info.get("usage", 0),
                 "is_free_tier": info.get("is_free_tier", False),
                 "error": info.get("error"),
             }
         )
-    return {"account": account, "key_list": keys}
+    return {"account": account, "key_list": keys, "auto_topup": AUTO_TOPUP}
 
 
 # ── System metrics ──────────────────────────────────────────────────────────
