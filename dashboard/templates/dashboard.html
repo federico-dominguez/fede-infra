@@ -153,7 +153,7 @@
 
         <div class="server-info">
           <div class="tag"><span class="label">Hostname</span><span class="value">{{ sv.name }}</span></div>
-          <div class="tag"><span class="label">Tailscale</span><span class="value">{{ sv.tailscale_ip }}</span></div>
+          <div class="tag"><span class="label">Tailscale</span><span class="value">{{ sv.ip }}</span></div>
           {% if sv.has_metrics %}
           {% for ip in sv.metrics.ips %}
           <div class="tag"><span class="label">{{ ip.interface }}</span><span class="value">{{ ip.ip }}</span></div>

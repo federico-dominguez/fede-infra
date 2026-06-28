@@ -53,30 +53,30 @@ KEY_DISPLAY = {
 SERVERS = [
     {
         "id": "main",
-        "name": "main",
-        "tailscale_ip": TAILSCALE_IP,
+        "hostname": "main",
+        "ip": TAILSCALE_IP,
+        "ssh_host": None,  # local
         "agent": os.environ.get("AGENT_TELEGRAM", "@s_ticia_bot"),
         "provider": "openrouter",
         "model": "deepseek-v4-pro",
-        "has_metrics": True,
     },
     {
         "id": "monitor-1",
-        "name": "monitor-1",
-        "tailscale_ip": "100.73.29.14",
-        "agent": "@Mia_bot",
+        "hostname": "monitor-1",
+        "ip": "100.73.29.14",
+        "ssh_host": "monitor-1",  # SSH config alias
+        "agent": "Mia",
         "provider": "openrouter",
         "model": "auto",
-        "has_metrics": False,
     },
     {
         "id": "monitor-2",
-        "name": "monitor-2",
-        "tailscale_ip": "100.68.19.107",
-        "agent": "@Cline_bot",
+        "hostname": "monitor-2",
+        "ip": "100.68.19.107",
+        "ssh_host": "monitor-2",  # SSH config alias
+        "agent": "Cline",
         "provider": "openrouter",
         "model": "auto",
-        "has_metrics": False,
     },
 ]
 
@@ -316,7 +316,7 @@ def _get_remote_metrics(host: str) -> dict:
         "echo '---'; "
         "df -h / | awk 'NR==2{gsub(/G/,\"\",$2);gsub(/G/,\"\",$3);gsub(/%/,\"\",$5);print $2,$3,$5}'; "
         "echo '---'; "
-        "top -bn1 | awk '/Cpu/{print 100-$8}'; "
+        "top -bn1 2>/dev/null | grep -oP '[0-9.]+(?= id)' | head -1 | awk '{print 100-\\$1}'; "
         "echo '---'; "
         "uptime -s"
     )
@@ -377,6 +377,9 @@ def _build_servers(or_data: dict, system: dict) -> list:
     servers_out = []
     for sv in SERVERS:
         sv_data = dict(sv)  # copy
+        # Map to matching template field names
+        sv_data["name"] = sv.get("hostname", sv["id"])
+        sv_data["tailscale_ip"] = sv["ip"]
         # Buscar keys de este servidor
         sv_keys = []
         for label, display in KEY_DISPLAY.items():
@@ -390,30 +393,36 @@ def _build_servers(or_data: dict, system: dict) -> list:
                     "usage": key_info.get("usage", 0),
                 })
         sv_data["keys"] = sv_keys
-        # Si es main, pasar métricas
+        # Si es main, pasar métricas (local)
         if sv["id"] == "main":
             sv_data["metrics"] = system
+            sv_data["has_metrics"] = True
         servers_out.append(sv_data)
     return servers_out
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    import concurrent.futures
+    from concurrent.futures import ThreadPoolExecutor
     system = get_system_metrics()
     or_data = await collect_openrouter_data()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     servers = _build_servers(or_data, system)
 
-    # Collect remote metrics via SSH in parallel
-    remote_hosts = {sv["id"]: sv["tailscale_ip"] for sv in SERVERS if not sv.get("has_metrics")}
-    if remote_hosts:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-            futures = {sid: pool.submit(_get_remote_metrics, ip) for sid, ip in remote_hosts.items()}
+    # Collect remote metrics via SSH (non-blocking in thread pool)
+    # Remote servers have ssh_host set; local main has ssh_host=None
+    remote = [(sv["id"], sv["ssh_host"]) for sv in SERVERS if sv.get("ssh_host")]
+    if remote:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            remote_results = {sid: pool.submit(_get_remote_metrics, host) for sid, host in remote}
             for sv_data in servers:
-                if sv_data["id"] in futures:
-                    metrics = futures[sv_data["id"]].result()
+                future = remote_results.get(sv_data["id"])
+                if future:
+                    try:
+                        metrics = future.result(timeout=12)
+                    except Exception:
+                        metrics = None
                     if metrics:
                         sv_data["metrics"] = metrics
                         sv_data["has_metrics"] = True
