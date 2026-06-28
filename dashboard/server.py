@@ -49,6 +49,7 @@ OPENROUTER_KEYS = {
 KEY_DISPLAY = {
     "main": {"name": "Ticia", "avatar": "T", "server_id": "main"},
     "main-moltbot": {"name": "Claw", "avatar": "C", "server_id": "main"},
+    "main-lena": {"name": "Lena", "avatar": "L", "server_id": "main"},
     "monitor-1": {"name": "Mia", "avatar": "M", "server_id": "monitor-1"},
     "monitor-2": {"name": "Cline", "avatar": "L", "server_id": "monitor-2"},
 }
@@ -400,6 +401,8 @@ def get_real_models() -> dict:
                 model = model.get("primary", str(model))
             if agent_id == "main":
                 models["main"] = _short_model(str(model))
+            elif agent_id == "lena":
+                models["main-lena"] = _short_model(str(model))
     except Exception:
         pass
 
@@ -468,7 +471,7 @@ def _build_servers(or_data: dict, system: dict) -> list:
                     "display_name": display["name"],
                     "avatar": display["avatar"],
                     "model": _real_models.get(label, "?"),
-                    "key_suffix": key_info.get("key_suffix", ""),
+                    "key_suffix": key_info.get("key_suffix", "") or ("shrd" if label == "main-lena" else ""),
                     "usage": key_info.get("usage", 0),
                 })
         sv_data["keys"] = sv_keys
