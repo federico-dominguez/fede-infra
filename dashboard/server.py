@@ -49,11 +49,12 @@ OPENROUTER_KEYS = {
 
 # Display info para cada key (nombre legible, avatar, servidor, bot_id de Telegram)
 KEY_DISPLAY = {
-    "main": {"name": "Ticia", "avatar": "🧠", "server_id": "main", "bot_id": "@s_ticia_bot"},
-    "main-moltbot": {"name": "Claw", "avatar": "🦞", "server_id": "main", "bot_id": "@s_clawopen_bot"},
-    "main-1-key": {"name": "Lena", "avatar": "🐱", "server_id": "main", "bot_id": "@s_lena_bot"},
-    "monitor-1": {"name": "Mia", "avatar": "🤖", "server_id": "monitor-1", "bot_id": "@s_mia_bot"},
-    "monitor-2": {"name": "Cline", "avatar": "⚡", "server_id": "monitor-2", "bot_id": "@s_cline_bot"},
+    "main": {"name": "Ticia", "avatar": "🧠", "server_id": "main", "bot_id": "@s_ticia_bot", "tier": "native"},
+    "main-1-key": {"name": "Lena", "avatar": "🐱", "server_id": "main", "bot_id": "@s_lena_bot", "tier": "native"},
+    "main-moltbot": {"name": "Claw", "avatar": "🦞", "server_id": "main", "bot_id": "@s_clawopen_bot", "tier": "docker"},
+    "main-lina": {"name": "Lina", "avatar": "🩷", "server_id": "main", "bot_id": "—", "tier": "docker"},
+    "monitor-1": {"name": "Mia", "avatar": "🤖", "server_id": "monitor-1", "bot_id": "@s_mia_bot", "tier": "remote"},
+    "monitor-2": {"name": "Cline", "avatar": "⚡", "server_id": "monitor-2", "bot_id": "@s_cline_bot", "tier": "remote"},
 }
 
 # Servidores monitoreados (ip, hostname detectados dinámicamente)
@@ -408,7 +409,7 @@ def get_real_models() -> dict:
     except Exception:
         pass
 
-    # 2. main Docker — Claw
+    # 2. main Docker — Claw y Lina
     try:
         with open("/var/lib/docker/volumes/moltbot_clawdbot_config/_data/clawdbot.json") as f:
             import json
@@ -418,6 +419,7 @@ def get_real_models() -> dict:
         if isinstance(model, dict):
             model = model.get("primary", str(model))
         models["main-moltbot"] = _short_model(str(model))
+        models["main-lina"] = _short_model(str(model))
     except Exception:
         pass
 
@@ -470,12 +472,13 @@ def _build_servers(or_data: dict, system: dict) -> list:
                 key_info = key_by_label.get(label, {})
                 suffix = key_info.get("key_suffix", "")
                 if not suffix:
-                    suffix = "shrd" if "lena" in label.lower() else ""
+                    suffix = "shrd" if label in ("main-1-key", "main-lina") else ""
                 sv_keys.append({
                     "label": label,
                     "display_name": display["name"],
                     "avatar": display["avatar"],
                     "bot_id": display.get("bot_id", "—"),
+                    "tier": display.get("tier", "native"),
                     "provider": "openrouter",
                     "model": _real_models.get(label, "?"),
                     "key_suffix": suffix,
