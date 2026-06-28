@@ -19,8 +19,12 @@ from jinja2 import Environment, FileSystemLoader
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
-TAILSCALE_IP = "100.109.36.3"
 PORT = 8080
+
+# ── Agent IDs dinámicos via env vars (con fallbacks) ──
+AGENT_MAIN = os.environ.get("AGENT_TELEGRAM", "@s_ticia_bot")
+AGENT_MON1 = os.environ.get("MONITOR1_AGENT", "@s_mia_bot")
+AGENT_MON2 = os.environ.get("MONITOR2_AGENT", "@s_cline_bot")
 
 # Auto top-up status (set via env var, OpenRouter API no lo expone)
 AUTO_TOPUP = os.environ.get("AUTO_TOPUP", "off").lower() in ("on", "true", "1", "yes")
@@ -49,32 +53,26 @@ KEY_DISPLAY = {
     "monitor-2": {"name": "Cline", "avatar": "L", "server_id": "monitor-2"},
 }
 
-# Servidores monitoreados
+# Servidores monitoreados (ip, hostname detectados dinámicamente)
 SERVERS = [
     {
         "id": "main",
-        "hostname": "main",
-        "ip": TAILSCALE_IP,
         "ssh_host": None,  # local
-        "agent": os.environ.get("AGENT_TELEGRAM", "@s_ticia_bot"),
+        "agent": AGENT_MAIN,
         "provider": "openrouter",
         "model": "deepseek-v4-pro",
     },
     {
         "id": "monitor-1",
-        "hostname": "monitor-1",
-        "ip": "100.73.29.14",
         "ssh_host": "monitor-1",  # SSH config alias
-        "agent": "@s_mia_bot",
+        "agent": AGENT_MON1,
         "provider": "openrouter",
         "model": "auto",
     },
     {
         "id": "monitor-2",
-        "hostname": "monitor-2",
-        "ip": "100.68.19.107",
         "ssh_host": "monitor-2",  # SSH config alias
-        "agent": "@s_cline_bot",
+        "agent": AGENT_MON2,
         "provider": "openrouter",
         "model": "auto",
     },
@@ -160,7 +158,7 @@ async def collect_openrouter_data() -> dict:
 
 
 def get_system_metrics() -> dict:
-    """Obtiene métricas del sistema con psutil."""
+    """Obtiene métricas del sistema con psutil + Tailscale IP dinámica."""
     cpu_percent = psutil.cpu_percent(interval=0.5)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
@@ -168,6 +166,11 @@ def get_system_metrics() -> dict:
     # Obtener hostname
     hostname = subprocess.run(
         ["hostname"], capture_output=True, text=True, timeout=5
+    ).stdout.strip()
+
+    # Obtener IP de Tailscale dinámicamente
+    tailscale_ip = subprocess.run(
+        ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=5
     ).stdout.strip()
 
     # Obtener IPs (solo interfaces relevantes)
@@ -182,6 +185,7 @@ def get_system_metrics() -> dict:
 
     return {
         "hostname": hostname,
+        "tailscale_ip": tailscale_ip if tailscale_ip else "",
         "ips": ips,
         "cpu_percent": round(cpu_percent, 1),
         "ram": {
@@ -310,9 +314,15 @@ def _format_uptime(boot_time: float) -> str:
 
 
 def _get_remote_metrics(host: str) -> dict:
-    """SSH into remote host and collect CPU/RAM/Disk metrics."""
+    """SSH into remote host and collect hostname, Tailscale IP, CPU/RAM/Disk."""
+    # Recolectar hostname, tailscale_ip, y métricas en comandos separados
+    # para evitar problemas de escaping en awk
     cmd = (
-        "free -m | awk '/Mem:/{printf \"%.1f %.1f %.1f\",$2/1024,$3/1024,($3/$2)*100}'; "
+        "hostname; "
+        "echo '---ID---'; "
+        "tailscale ip -4; "
+        "echo '---ID---'; "
+        "free -m | awk '/Mem:/{print $2/1024,$3/1024,($3/$2)*100}'; "
         "echo '---'; "
         "df -h / | awk 'NR==2{gsub(/G/,\"\",$2);gsub(/G/,\"\",$3);gsub(/%/,\"\",$5);print $2,$3,$5}'; "
         "echo '---'; "
@@ -325,13 +335,19 @@ def _get_remote_metrics(host: str) -> dict:
             ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", host, cmd],
             capture_output=True, text=True, timeout=10,
         )
-        parts = out.stdout.strip().split('---')
-        if len(parts) < 4:
+        parts = out.stdout.strip().split('---ID---')
+        if len(parts) < 3:
             raise ValueError(f"Unexpected output: {out.stdout[:100]}")
-        ram_total, ram_used, ram_pct = parts[0].strip().split()
-        disk_total, disk_used, disk_pct = parts[1].strip().split()
-        cpu_pct = float(parts[2].strip())
-        uptime_raw = parts[3].strip()
+        remote_hostname = parts[0].strip()
+        remote_tailscale_ip = parts[1].strip()
+        rest = parts[2].strip() if len(parts) > 2 else ""
+        sub_parts = rest.split('---')
+        if len(sub_parts) < 3:
+            raise ValueError(f"Unexpected data: {rest[:100]}")
+        ram_total, ram_used, ram_pct = sub_parts[0].strip().split()
+        disk_total, disk_used, disk_pct = sub_parts[1].strip().split()
+        cpu_pct = float(sub_parts[2].strip())
+        uptime_raw = sub_parts[3].strip() if len(sub_parts) > 3 else ""
         # Parse uptime from "2026-06-28 12:00:00" format
         try:
             boot = datetime.strptime(uptime_raw, "%Y-%m-%d %H:%M:%S")
@@ -347,11 +363,13 @@ def _get_remote_metrics(host: str) -> dict:
         except Exception:
             uptime = uptime_raw
         return {
+            "hostname": remote_hostname,
+            "tailscale_ip": remote_tailscale_ip if remote_tailscale_ip else host,
             "cpu_percent": round(cpu_pct, 1),
             "ram": {"total": float(ram_total), "used": float(ram_used), "percent": round(float(ram_pct), 1)},
             "disk": {"total": float(disk_total), "used": float(disk_used), "percent": round(float(disk_pct), 1)},
             "uptime": uptime,
-            "ips": [{"interface": "tailscale0", "ip": host}],
+            "ips": [{"interface": "tailscale0", "ip": remote_tailscale_ip if remote_tailscale_ip else host}],
             "backup": {"status": "none", "label": "N/A", "last_run": None, "hours_since": None},
         }
     except Exception:
@@ -377,9 +395,10 @@ def _build_servers(or_data: dict, system: dict) -> list:
     servers_out = []
     for sv in SERVERS:
         sv_data = dict(sv)  # copy
-        # Map to matching template field names
-        sv_data["name"] = sv.get("hostname", sv["id"])
-        sv_data["tailscale_ip"] = sv["ip"]
+        sv_data["name"] = sv["id"]  # fallback; será reemplazado por métricas si disponibles
+        sv_data["ip"] = ""  # fallback; se llena con métricas
+        sv_data["metrics"] = None
+        sv_data["has_metrics"] = False
         # Buscar keys de este servidor
         sv_keys = []
         for label, display in KEY_DISPLAY.items():
@@ -393,10 +412,12 @@ def _build_servers(or_data: dict, system: dict) -> list:
                     "usage": key_info.get("usage", 0),
                 })
         sv_data["keys"] = sv_keys
-        # Si es main, pasar métricas (local)
+        # main tiene métricas locales
         if sv["id"] == "main":
             sv_data["metrics"] = system
             sv_data["has_metrics"] = True
+            sv_data["name"] = system.get("hostname", sv["id"])
+            sv_data["ip"] = system.get("tailscale_ip", "")
         servers_out.append(sv_data)
     return servers_out
 
@@ -426,13 +447,17 @@ async def index():
                     if metrics:
                         sv_data["metrics"] = metrics
                         sv_data["has_metrics"] = True
+                        # Usar hostname y Tailscale IP dinámicos desde el servidor remoto
+                        if metrics.get("hostname"):
+                            sv_data["name"] = metrics["hostname"]
+                        if metrics.get("tailscale_ip"):
+                            sv_data["ip"] = metrics["tailscale_ip"]
 
     template = templates.get_template("dashboard.html")
     html = template.render(
         servers=servers,
         openrouter=or_data,
         now=now,
-        tailscale_ip=TAILSCALE_IP,
     )
     return HTMLResponse(content=html)
 
