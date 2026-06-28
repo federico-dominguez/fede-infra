@@ -376,6 +376,63 @@ def _get_remote_metrics(host: str) -> dict:
         return None
 
 
+# ── Real models from configs ───────────────────────────────────────────────
+
+
+def _short_model(model: str) -> str:
+    """Acorta nombres de modelo para display."""
+    return model.replace("openrouter/", "").replace("deepseek/", "")
+
+
+def get_real_models() -> dict:
+    """Retorna {key_label: model_short} desde configs reales de cada agente."""
+    models = {}
+
+    # 1. main nativo — Ticia y Lena
+    try:
+        with open("/root/.openclaw-ticia/openclaw.json") as f:
+            import json
+            cfg = json.load(f)
+        for agent in cfg.get("agents", {}).get("list", []):
+            agent_id = agent.get("id")
+            model = agent.get("model", {})
+            if isinstance(model, dict):
+                model = model.get("primary", str(model))
+            if agent_id == "main":
+                models["main"] = _short_model(str(model))
+    except Exception:
+        pass
+
+    # 2. main Docker — Claw
+    try:
+        with open("/var/lib/docker/volumes/moltbot_clawdbot_config/_data/clawdbot.json") as f:
+            import json
+            cfg = json.load(f)
+        defaults = cfg.get("agents", {}).get("defaults", {})
+        model = defaults.get("model", {})
+        if isinstance(model, dict):
+            model = model.get("primary", str(model))
+        models["main-moltbot"] = _short_model(str(model))
+    except Exception:
+        pass
+
+    # 3. monitor-1 y monitor-2 — SSH grep goose config
+    for sv_id, host in [("monitor-1", "monitor-1"), ("monitor-2", "monitor-2")]:
+        try:
+            out = subprocess.run(
+                ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", host,
+                 "grep '^model:' /home/ubuntu/.config/goose/config.yaml 2>/dev/null || echo 'model: unknown'"],
+                capture_output=True, text=True, timeout=8
+            )
+            model_line = out.stdout.strip()
+            model = model_line.split(":", 1)[-1].strip()
+            models[sv_id] = _short_model(model)
+        except Exception:
+            pass
+
+    return models
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -391,6 +448,8 @@ async def api_openrouter():
 
 def _build_servers(or_data: dict, system: dict) -> list:
     """Arma lista de servidores con sus keys asociadas para el template."""
+    global _real_models
+    _real_models = get_real_models()
     key_by_label = {k["label"]: k for k in or_data.get("key_list", [])}
     servers_out = []
     for sv in SERVERS:
@@ -408,6 +467,7 @@ def _build_servers(or_data: dict, system: dict) -> list:
                     "label": label,
                     "display_name": display["name"],
                     "avatar": display["avatar"],
+                    "model": _real_models.get(label, "?"),
                     "key_suffix": key_info.get("key_suffix", ""),
                     "usage": key_info.get("usage", 0),
                 })

@@ -203,7 +203,7 @@
           {% endif %}
           <div class="tag"><span class="label">Agent</span><span class="value">{{ sv.agent }}</span></div>
           <div class="tag"><span class="label">Provider</span><span class="value">{{ sv.provider }}</span></div>
-          <div class="tag"><span class="label">Model</span><span class="value">{{ sv.model }}</span></div>
+
         </div>
 
         {% if sv.has_metrics %}
@@ -241,7 +241,7 @@
         <div style="margin-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};padding-top:{% if sv.has_metrics %}16px{% else %}0{% endif %};border-top:{% if sv.has_metrics %}1px solid var(--border){% else %}none{% endif %};">
           <div class="card-title" style="margin-bottom:10px;"><span class="icon">🔑</span> OpenRouter Keys</div>
           <table class="key-table">
-            <thead><tr><th>Key</th><th>API Key</th><th>Uso</th></tr></thead>
+            <thead><tr><th>Key</th><th>Model</th><th>API Key</th><th>Uso</th></tr></thead>
             <tbody>
             {% for key in sv.get("keys", []) %}
             <tr>
@@ -253,6 +253,7 @@
                   </div>
                 </div>
               </td>
+              <td><code style="font-size:12px;color:var(--accent);">{{ key.model }}</code></td>
               <td style="font-family:monospace;font-size:13px;color:var(--text-dim);">**...{{ key.key_suffix }}</td>
               <td>
                 {% if key.error %}
