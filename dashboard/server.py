@@ -65,7 +65,7 @@ SERVERS = [
         "hostname": "monitor-1",
         "ip": "100.73.29.14",
         "ssh_host": "monitor-1",  # SSH config alias
-        "agent": "Mia",
+        "agent": "@s_mia_bot",
         "provider": "openrouter",
         "model": "auto",
     },
@@ -74,7 +74,7 @@ SERVERS = [
         "hostname": "monitor-2",
         "ip": "100.68.19.107",
         "ssh_host": "monitor-2",  # SSH config alias
-        "agent": "Cline",
+        "agent": "@s_cline_bot",
         "provider": "openrouter",
         "model": "auto",
     },
@@ -316,7 +316,7 @@ def _get_remote_metrics(host: str) -> dict:
         "echo '---'; "
         "df -h / | awk 'NR==2{gsub(/G/,\"\",$2);gsub(/G/,\"\",$3);gsub(/%/,\"\",$5);print $2,$3,$5}'; "
         "echo '---'; "
-        "top -bn1 2>/dev/null | grep -oP '[0-9.]+(?= id)' | head -1 | awk '{print 100-\\$1}'; "
+        "top -bn1 2>/dev/null | grep -oP '[0-9.]+(?= id)' | head -1 | awk '{print 100-$1}'; "
         "echo '---'; "
         "uptime -s"
     )
