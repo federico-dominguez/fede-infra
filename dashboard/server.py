@@ -41,6 +41,7 @@ OPENROUTER_KEYS = {
         ("main", os.environ.get("OPENROUTER_API_KEY", "")),
         ("main-1-key", os.environ.get("LENA_OPENROUTER_API_KEY", "")),
         ("main-moltbot", os.environ.get("CLAW_OPENROUTER_API_KEY", "")),
+        ("main-lina", os.environ.get("LINA_OPENROUTER_API_KEY", "")),
         ("monitor-1", os.environ.get("MONITOR1_OPENROUTER_API_KEY", "")),
         ("monitor-2", os.environ.get("MONITOR2_OPENROUTER_API_KEY", "")),
     ]
@@ -52,7 +53,7 @@ KEY_DISPLAY = {
     "main": {"name": "Ticia", "avatar": "🧠", "server_id": "main", "bot_id": "@s_ticia_bot", "tier": "native"},
     "main-1-key": {"name": "Lena", "avatar": "🐱", "server_id": "main", "bot_id": "@s_lena_bot", "tier": "native"},
     "main-moltbot": {"name": "Claw", "avatar": "🦞", "server_id": "main", "bot_id": "@s_clawopen_bot", "tier": "docker"},
-    "main-lina": {"name": "Lina", "avatar": "🩷", "server_id": "main", "bot_id": "—", "tier": "docker"},
+    "main-lina": {"name": "Lina", "avatar": "🩷", "server_id": "main", "bot_id": "@s_lina_bot", "tier": "docker"},
     "monitor-1": {"name": "Mia", "avatar": "🤖", "server_id": "monitor-1", "bot_id": "@s_mia_bot", "tier": "remote"},
     "monitor-2": {"name": "Cline", "avatar": "⚡", "server_id": "monitor-2", "bot_id": "@s_cline_bot", "tier": "remote"},
 }
@@ -177,20 +178,9 @@ def get_system_metrics() -> dict:
         ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=5
     ).stdout.strip()
 
-    # Obtener IPs (solo interfaces relevantes)
-    IMPORTANT_IFACES = {"tailscale0", "enp0s6", "lo"}
-    ips = [
-        {"interface": iface, "ip": addr.address}
-        for iface, addrs in psutil.net_if_addrs().items()
-        if iface in IMPORTANT_IFACES
-        for addr in addrs
-        if addr.family == 2  # AF_INET
-    ]
-
     return {
         "hostname": hostname,
         "tailscale_ip": tailscale_ip if tailscale_ip else "",
-        "ips": ips,
         "cpu_percent": round(cpu_percent, 1),
         "ram": {
             "total": round(mem.total / (1024**3), 1),
@@ -409,17 +399,28 @@ def get_real_models() -> dict:
     except Exception:
         pass
 
-    # 2. main Docker — Claw y Lina
+    # 2. main Docker — Claw, Lina, Gemma — query actual config via gateway
     try:
-        with open("/var/lib/docker/volumes/moltbot_clawdbot_config/_data/clawdbot.json") as f:
-            import json
-            cfg = json.load(f)
-        defaults = cfg.get("agents", {}).get("defaults", {})
-        model = defaults.get("model", {})
-        if isinstance(model, dict):
-            model = model.get("primary", str(model))
-        models["main-moltbot"] = _short_model(str(model))
-        models["main-lina"] = _short_model(str(model))
+        # Find the running moltbot container dynamically
+        ps = subprocess.run(
+            ["docker", "ps", "--filter", "name=moltbot", "--format", "{{.Names}}"],
+            capture_output=True, text=True, timeout=5
+        )
+        container = ps.stdout.strip().split("\n")[0] if ps.stdout.strip() else ""
+        if container:
+            out = subprocess.run(
+                ["docker", "exec", container, "openclaw", "agents", "list", "--json"],
+                capture_output=True, text=True, timeout=8
+            )
+            if out.returncode == 0:
+                import json
+                for agent in json.loads(out.stdout):
+                    agent_id = agent.get("id")
+                    model = agent.get("model", "?")
+                    label_map = {"main": "main-moltbot", "lina": "main-lina"}
+                    key_label = label_map.get(agent_id)
+                    if key_label:
+                        models[key_label] = _short_model(str(model))
     except Exception:
         pass
 
