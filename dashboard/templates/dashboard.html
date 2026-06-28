@@ -275,10 +275,10 @@
             <tr>
               <td>
                 <div class="key-label">
-                  <div class="avatar">{% if key.label == "main" %}T{% else %}C{% endif %}</div>
+                  <div class="avatar">{% if key.label == "main" %}T{% elif key.label == "main-moltbot" %}C{% elif key.label == "monitor-1" %}M{% elif key.label == "monitor-2" %}L{% else %}?{% endif %}</div>
                   <div>
                     <div class="name">{{ key.label }}</div>
-                    <div class="sub">{% if key.label == "main" %}Ticia{% else %}Claw{% endif %}</div>
+                    <div class="sub">{% if key.label == "main" %}Ticia{% elif key.label == "main-moltbot" %}Claw{% elif key.label == "monitor-1" %}Mia{% elif key.label == "monitor-2" %}Cline{% endif %}</div>
                   </div>
                 </div>
               </td>

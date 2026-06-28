@@ -26,13 +26,17 @@ PORT = 8080
 AUTO_TOPUP = os.environ.get("AUTO_TOPUP", "off").lower() in ("on", "true", "1", "yes")
 
 # OpenRouter keys
-#  - "main" (Ticia)
-#  - "main-moltbot" (Claw)
+#  - "main" (Ticia via env OPENROUTER_API_KEY)
+#  - "main-moltbot" (Claw via env CLAW_OPENROUTER_API_KEY)
+#  - "monitor-1" (Mia via env MONITOR1_OPENROUTER_API_KEY)
+#  - "monitor-2" (Cline via env MONITOR2_OPENROUTER_API_KEY)
 OPENROUTER_KEYS = {
     name: key
     for name, key in [
         ("main", os.environ.get("OPENROUTER_API_KEY", "")),
         ("main-moltbot", os.environ.get("CLAW_OPENROUTER_API_KEY", "")),
+        ("monitor-1", os.environ.get("MONITOR1_OPENROUTER_API_KEY", "")),
+        ("monitor-2", os.environ.get("MONITOR2_OPENROUTER_API_KEY", "")),
     ]
     if key
 }
