@@ -146,6 +146,29 @@ def get_system_metrics() -> dict:
             "percent": round(disk.percent, 1),
         },
         "uptime": _format_uptime(psutil.boot_time()),
+        "backup": _get_backup_status(),
+    }
+
+
+def _get_backup_status() -> dict:
+    """Checkea estado del backup OCI vía timestamp del log."""
+    log_path = Path("/var/log/oci-backup.log")
+    if not log_path.exists():
+        return {"status": False, "label": "Sin ejecutar", "last_run": None, "hours_since": None}
+
+    last_modified = log_path.stat().st_mtime
+    now = datetime.now().timestamp()
+    hours_since = round((now - last_modified) / 3600, 1)
+    status = hours_since < 72
+
+    last_run_dt = datetime.fromtimestamp(last_modified)
+    label = "Activo" if status else "Inactivo"
+
+    return {
+        "status": status,
+        "label": label,
+        "last_run": last_run_dt.strftime("%Y-%m-%d %H:%M"),
+        "hours_since": hours_since,
     }
 
 
@@ -183,16 +206,10 @@ async def index():
     or_data = await collect_openrouter_data()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Resolver estado de backup (placeholder por ahora)
-    backup_status = False
-    backup_hour = "03:00"
-
     template = templates.get_template("dashboard.html")
     html = template.render(
         system=system,
         openrouter=or_data,
-        backup_status=backup_status,
-        backup_hour=backup_hour,
         now=now,
         tailscale_ip=TAILSCALE_IP,
         agent_name=AGENT_NAME,
