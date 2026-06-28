@@ -50,8 +50,8 @@ OPENROUTER_KEYS = {
 # Display info para cada key (nombre legible, avatar, servidor, bot_id de Telegram)
 KEY_DISPLAY = {
     "main": {"name": "Ticia", "avatar": "🧠", "server_id": "main", "bot_id": "@s_ticia_bot"},
-    "main-moltbot": {"name": "Claw", "avatar": "🦞", "server_id": "main", "bot_id": "—"},
-    "main-1-key": {"name": "Lena", "avatar": "🐱‍👤", "server_id": "main", "bot_id": "—"},
+    "main-moltbot": {"name": "Claw", "avatar": "🦞", "server_id": "main", "bot_id": "@s_clawopen_bot"},
+    "main-1-key": {"name": "Lena", "avatar": "🐱", "server_id": "main", "bot_id": "@s_lena_bot"},
     "monitor-1": {"name": "Mia", "avatar": "🤖", "server_id": "monitor-1", "bot_id": "@s_mia_bot"},
     "monitor-2": {"name": "Cline", "avatar": "⚡", "server_id": "monitor-2", "bot_id": "@s_cline_bot"},
 }
